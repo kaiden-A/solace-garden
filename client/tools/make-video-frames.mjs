@@ -18,8 +18,8 @@ const SPECIES = [
 
 const WIDTH = 1920;
 const HEIGHT = 1080;
-const PLANT_HEIGHT = 0.3;
-const BASE_Y = 0.85;
+const PLANT_HEIGHT = 0.78;
+const BASE_Y = 0.92;
 
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -47,5 +47,6 @@ for (const species of SPECIES) {
   console.log(`${species.id}.jpg  ${WIDTH}x${HEIGHT}  plant ${targetWidth}x${targetHeight} at (${left}, ${top})  ${Math.round(bytes / 1024)}KB`);
 }
 
-console.log("\nUpload these as the FIRST FRAME in your image-to-video tool.");
+console.log("\nUpload these as the FIRST FRAME in your image-to-video tool (16:9 mode!).");
+console.log("The plant fills most of the frame on purpose — the app scales the clip down to match.");
 console.log("Prompts and settings: tools/wind-clip-prompts.md");

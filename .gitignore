@@ -24,6 +24,9 @@ shots/
 raw/
 prototypes/solace-01/data/
 
+# generated release clips (large binaries — regenerate locally; remove this line to version them)
+client/public/assets/release/*.mp4
+
 # OS
 .DS_Store
 Thumbs.db

@@ -6,7 +6,9 @@ import type { PublicPlant, Species } from "@/lib/types";
 import { Icon } from "./Icon";
 import { makeDotTexture, makePetalTexture, makeStreakTexture } from "./pixi-utils";
 
-const CLIP_TWEAKS: Partial<Record<Species, { scale?: number; offsetY?: number }>> = {};
+const CLIP_TWEAKS: Partial<
+  Record<Species, { scale?: number; offsetY?: number; opacity?: number; maxSeconds?: number; rate?: number }>
+> = {};
 
 interface SceneApi {
   setHolding: (holding: boolean) => void;
@@ -109,6 +111,19 @@ export default function WindScene({ plant, onDone }: { plant: PublicPlant; onDon
         const base = { x: width / 2, y: height * 0.8 };
         let plantScale = 1;
 
+        const fitVideo = () => {
+          const video = videoRef.current;
+          if (!video || !video.videoWidth || !video.videoHeight) return;
+          const fitted = Math.max(width / video.videoWidth, height / video.videoHeight);
+          const displayHeight = video.videoHeight * fitted;
+          const videoPlantHeight = displayHeight * 0.78;
+          const appPlantHeight = Math.min(width * 0.2, 240);
+          const scale = (appPlantHeight / videoPlantHeight) * (tweak.scale ?? 1);
+          const contentBaseY = (height - displayHeight) / 2 + displayHeight * 0.92 + (tweak.offsetY ?? 0);
+          video.style.transformOrigin = `${(width / 2).toFixed(1)}px ${contentBaseY.toFixed(1)}px`;
+          video.style.transform = `translateY(${(base.y - contentBaseY).toFixed(1)}px) scale(${scale.toFixed(4)})`;
+        };
+
         const layout = () => {
           width = app.screen.width;
           height = app.screen.height;
@@ -120,8 +135,10 @@ export default function WindScene({ plant, onDone }: { plant: PublicPlant; onDon
           base.x = width / 2;
           base.y = height * 0.8;
           sprite.position.set(base.x, base.y);
+          fitVideo();
         };
         layout();
+        videoRef.current?.addEventListener("loadedmetadata", fitVideo);
 
         const spawnEmbers = () => {
           const count = reduced ? 0 : 90;
@@ -169,19 +186,30 @@ export default function WindScene({ plant, onDone }: { plant: PublicPlant; onDon
         let elapsed = 0;
         let videoMode: "idle" | "pending" | "on" | "off" = "idle";
         let videoEndTime = 0;
+        let videoStartTime = 0;
         let videoBroken = false;
         let holding = false;
+
+        const finishVideo = () => {
+          if (videoMode !== "on") return;
+          videoEndTime = elapsed;
+          videoMode = "off";
+          if (videoRef.current) videoRef.current.style.opacity = "0";
+          spawnEmbers();
+        };
 
         const startRelease = () => {
           const video = videoRef.current;
           if (!reduced && video && !videoBroken) {
             videoMode = "pending";
             video.style.opacity = "0";
+            video.playbackRate = tweak.rate ?? 1;
             video
               .play()
               .then(() => {
                 videoMode = "on";
-                video.style.opacity = "1";
+                videoStartTime = elapsed;
+                video.style.opacity = String(tweak.opacity ?? 1);
               })
               .catch(() => {
                 videoMode = "off";
@@ -201,11 +229,7 @@ export default function WindScene({ plant, onDone }: { plant: PublicPlant; onDon
             startRelease();
           },
           videoEnded: () => {
-            if (videoMode !== "on") return;
-            videoEndTime = elapsed;
-            videoMode = "off";
-            if (videoRef.current) videoRef.current.style.opacity = "0";
-            spawnEmbers();
+            finishVideo();
           },
           videoFailed: () => {
             videoBroken = true;
@@ -242,6 +266,10 @@ export default function WindScene({ plant, onDone }: { plant: PublicPlant; onDon
             } else if (videoMode === "on") {
               sprite.alpha = Math.max(0, 1 - (elapsed - liftStart) / 0.4);
               sprite.rotation = Math.sin(elapsed * 0.9) * 0.015;
+              if (tweak.maxSeconds) {
+                const rate = tweak.rate ?? 1;
+                if (elapsed - videoStartTime > tweak.maxSeconds / rate) finishVideo();
+              }
             } else if (videoEndTime) {
               sprite.alpha = Math.max(0, sprite.alpha - dt * 2);
             } else {
