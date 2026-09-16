@@ -1,0 +1,29 @@
+# dependencies
+node_modules/
+
+# builds
+.next/
+out/
+build/
+
+# logs
+*.log
+dev.log
+
+# local env
+.env
+.env.*
+
+# personal + generated data
+client/data/plants.json
+client/data/users.json
+*.backup.json
+
+# tool outputs
+shots/
+raw/
+prototypes/solace-01/data/
+
+# OS
+.DS_Store
+Thumbs.db
