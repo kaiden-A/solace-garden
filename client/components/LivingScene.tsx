@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Fireflies } from "./Fireflies";
-import { makeDotTexture, makePetalTexture, makeRadialTexture, makeVerticalGradientTexture } from "./pixi-utils";
+import { makeDotTexture, makePetalTexture, makeRadialTexture, makeVerticalGradientTexture, pixiResolution, scaledCount } from "./pixi-utils";
 
 const LANTERNS = [
   { x: 0.135, y: 0.72 },
@@ -43,7 +43,7 @@ export default function LivingScene() {
           backgroundAlpha: 0,
           resizeTo: host,
           autoDensity: true,
-          resolution: Math.min(window.devicePixelRatio || 1, 2),
+          resolution: pixiResolution(),
         });
         if (disposed) {
           app.destroy(true);
@@ -90,7 +90,7 @@ export default function LivingScene() {
 
         const starTexture = makeDotTexture(PIXI, app.renderer, 0xffffff, 1.1);
         const stars: Particle[] = [];
-        const starCount = reduced ? 0 : 36;
+        const starCount = reduced ? 0 : scaledCount(36, app.screen.width, app.screen.height);
         for (let i = 0; i < starCount; i++) {
           const sprite = new PIXI.Sprite(starTexture);
           sprite.zIndex = 40;
@@ -105,7 +105,7 @@ export default function LivingScene() {
           amp: number;
         }
         const fireflies: Firefly[] = [];
-        const fireflyCount = reduced ? 0 : 22;
+        const fireflyCount = reduced ? 0 : scaledCount(22, app.screen.width, app.screen.height);
         for (let i = 0; i < fireflyCount; i++) {
           const sprite = new PIXI.Sprite(fireflyTexture);
           sprite.blendMode = "add";
@@ -125,7 +125,7 @@ export default function LivingScene() {
           makePetalTexture(PIXI, app.renderer, 0xe0c9a0, 2.2, 3.6),
         ];
         const leaves: Leaf[] = [];
-        const leafCount = reduced ? 0 : 9;
+        const leafCount = reduced ? 0 : scaledCount(9, app.screen.width, app.screen.height);
         for (let i = 0; i < leafCount; i++) {
           const sprite = new PIXI.Sprite(leafTextures[i % leafTextures.length]);
           sprite.zIndex = 80;

@@ -247,6 +247,7 @@ export function MusicMini() {
         <button
           className="player-btn"
           title="Play / pause"
+          aria-label="Play / pause"
           onClick={() => {
             if (music.mode === "off") music.playAmbient();
             else music.toggle();
@@ -254,7 +255,7 @@ export function MusicMini() {
         >
           <Icon name={music.playing ? "pause" : "play"} />
         </button>
-        <button className="player-open" title="Music" onClick={() => setOpen(true)}>
+        <button className="player-open" title="Music" aria-label="Music" onClick={() => setOpen(true)}>
           <Icon name="music" />
         </button>
       </div>
@@ -287,6 +288,14 @@ function MusicModal({ onClose }: { onClose: () => void }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
 
   useEffect(() => {
     if (tab === "yt") pasteRef.current?.focus();
@@ -342,7 +351,7 @@ function MusicModal({ onClose }: { onClose: () => void }) {
       }}
     >
       <div className="modal music-modal" role="dialog" aria-modal="true" aria-label="Music">
-        <button className="modal-x" onClick={onClose} title="Close">
+        <button className="modal-x" onClick={onClose} title="Close" aria-label="Close">
           <Icon name="close" />
         </button>
         <h2>Music</h2>
@@ -375,7 +384,7 @@ function MusicModal({ onClose }: { onClose: () => void }) {
             </>
           )}
           {music.mode !== "off" && (
-            <button className="player-btn" onClick={music.toggle} title="Play / pause">
+            <button className="player-btn" onClick={music.toggle} title="Play / pause" aria-label="Play / pause">
               <Icon name={music.playing ? "pause" : "play"} />
             </button>
           )}
@@ -408,6 +417,11 @@ function MusicModal({ onClose }: { onClose: () => void }) {
                 value={link}
                 onChange={(event) => setLink(event.target.value)}
                 placeholder="Paste a YouTube link"
+                inputMode="url"
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                enterKeyHint="go"
               />
               <button className="btn btn-primary" disabled={loading}>
                 {loading ? "…" : "Play"}

@@ -46,3 +46,22 @@ export function makeVerticalGradientTexture(PIXI: any, stops: Array<[number, str
   }
   return PIXI.Texture.from(canvas);
 }
+
+export const isCoarsePointer = () =>
+  typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+
+export const pixiResolution = (max = 2) =>
+  Math.min(window.devicePixelRatio || 1, isCoarsePointer() ? Math.min(max, 1.5) : max);
+
+export function makeTouchScrollable(app: any) {
+  try {
+    app.canvas.style.touchAction = "pan-y pinch-zoom";
+  } catch {
+    /* ignore */
+  }
+}
+
+export function scaledCount(base: number, width: number, height: number) {
+  const ratio = (width * height) / (1280 * 800);
+  return Math.max(4, Math.round(base * Math.min(1, Math.max(0.4, ratio))));
+}

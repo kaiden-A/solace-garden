@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
+import { fineFocus } from "@/lib/focus";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -47,7 +48,9 @@ export default function SignupPage() {
             value={name}
             onChange={(event) => setName(event.target.value)}
             required
-            autoFocus
+            ref={fineFocus}
+            autoComplete="name"
+            enterKeyHint="next"
           />
           <input
             type="email"
@@ -55,6 +58,8 @@ export default function SignupPage() {
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             required
+            autoComplete="email"
+            enterKeyHint="next"
           />
           <input
             type="password"
@@ -62,6 +67,8 @@ export default function SignupPage() {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             required
+            autoComplete="new-password"
+            enterKeyHint="done"
           />
           {error && <p className="auth-error">{error}</p>}
           <button className="btn btn-primary" disabled={busy}>

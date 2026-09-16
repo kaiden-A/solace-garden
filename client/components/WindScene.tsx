@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { artOf, metaOf, speciesOf } from "@/lib/species";
 import type { PublicPlant, Species } from "@/lib/types";
 import { Icon } from "./Icon";
-import { makeDotTexture, makePetalTexture, makeStreakTexture } from "./pixi-utils";
+import { makeDotTexture, makePetalTexture, makeStreakTexture, makeTouchScrollable, pixiResolution, scaledCount } from "./pixi-utils";
 
 const CLIP_TWEAKS: Partial<
   Record<Species, { scale?: number; offsetY?: number; opacity?: number; maxSeconds?: number; rate?: number }>
@@ -50,13 +50,14 @@ export default function WindScene({ plant, onDone }: { plant: PublicPlant; onDon
           backgroundAlpha: 0,
           resizeTo: host,
           autoDensity: true,
-          resolution: Math.min(window.devicePixelRatio || 1, 2),
+          resolution: pixiResolution(),
         });
         if (disposed) {
           app.destroy(true);
           return;
         }
         host.appendChild(app.canvas);
+        makeTouchScrollable(app);
         app.stage.sortableChildren = true;
         app.stage.alpha = 0;
 
@@ -86,7 +87,7 @@ export default function WindScene({ plant, onDone }: { plant: PublicPlant; onDon
           by: number;
         }
         const gusts: Gust[] = [];
-        const gustCount = reduced ? 0 : 26;
+        const gustCount = reduced ? 0 : scaledCount(26, app.screen.width, app.screen.height);
         for (let i = 0; i < gustCount; i++) {
           const gustSprite = new PIXI.Sprite(streakTexture);
           gustSprite.rotation = 0.06;
@@ -141,7 +142,7 @@ export default function WindScene({ plant, onDone }: { plant: PublicPlant; onDon
         videoRef.current?.addEventListener("loadedmetadata", fitVideo);
 
         const spawnEmbers = () => {
-          const count = reduced ? 0 : 90;
+          const count = reduced ? 0 : scaledCount(90, app.screen.width, app.screen.height);
           for (let i = 0; i < count; i++) {
             const isPetal = Math.random() > 0.45;
             const trailSprite = new PIXI.Sprite(isPetal ? petalTexture : moteTexture);

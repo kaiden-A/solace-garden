@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { artOf, artOfSpecies, metaOf, SPECIES_KEYS } from "@/lib/species";
 import { SECTIONS } from "@/lib/sections";
 import type { PublicPlant } from "@/lib/types";
-import { makeDotTexture, makeRadialTexture } from "./pixi-utils";
+import { isCoarsePointer, makeDotTexture, makeRadialTexture, makeTouchScrollable, pixiResolution, scaledCount } from "./pixi-utils";
 
 interface GardenCanvasProps {
   plants: PublicPlant[];
@@ -21,6 +21,8 @@ interface Entry {
   alive: number;
   phase: number;
   hovered: boolean;
+  pressed: boolean;
+  hitArea: any;
 }
 
 interface Particle {
@@ -52,19 +54,21 @@ export default function GardenCanvas({ plants, focused, onSelect, onFocus, onFai
       try {
         const PIXI = await import("pixi.js");
         const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const coarse = isCoarsePointer();
         app = new PIXI.Application();
         await app.init({
           antialias: true,
           backgroundAlpha: 0,
           resizeTo: host,
           autoDensity: true,
-          resolution: Math.min(window.devicePixelRatio || 1, 2),
+          resolution: pixiResolution(),
         });
         if (disposed) {
           app.destroy(true);
           return;
         }
         host.appendChild(app.canvas);
+        makeTouchScrollable(app);
         app.stage.sortableChildren = true;
         app.stage.alpha = 0;
 
@@ -161,8 +165,19 @@ export default function GardenCanvas({ plants, focused, onSelect, onFocus, onFai
               sprite.on("pointerout", () => {
                 entry!.hovered = false;
               });
+              sprite.on("pointerdown", () => {
+                entry!.pressed = true;
+              });
+              for (const type of ["pointerup", "pointerupoutside", "pointercancel"]) {
+                sprite.on(type, () => {
+                  entry!.pressed = false;
+                });
+              }
               sprite.on("pointertap", () => propsRef.current.onSelect(plant.id));
               app.stage.addChild(sprite);
+
+              const hitArea = new PIXI.Rectangle(0, 0, 1, 1);
+              if (coarse) sprite.hitArea = hitArea;
 
               const glow = new PIXI.Sprite(glowTexture);
               glow.anchor.set(0.5, 0.62);
@@ -177,6 +192,8 @@ export default function GardenCanvas({ plants, focused, onSelect, onFocus, onFai
                 alive: 0,
                 phase: ((plant.seed % 628) / 100) * 1,
                 hovered: false,
+                pressed: false,
+                hitArea,
               };
               entries.set(plant.id, entry);
             }
@@ -203,7 +220,7 @@ export default function GardenCanvas({ plants, focused, onSelect, onFocus, onFai
           parallax.tx = 0;
           parallax.ty = 0;
         };
-        if (!reduced) {
+        if (!reduced && !coarse) {
           host.addEventListener("pointermove", onPointerMove);
           host.addEventListener("pointerleave", onPointerLeave);
         }
@@ -218,19 +235,19 @@ export default function GardenCanvas({ plants, focused, onSelect, onFocus, onFai
           const fireflyTexture = makeDot(0xffe9b0, 2.4);
           const pollenTexture = makeDot(0xfff2cf, 1.3);
           const petalTexture = makeDot(0xf4b8c8, 2.6, 0.9);
-          for (let i = 0; i < 18; i++) {
+          for (let i = 0; i < scaledCount(18, app.screen.width, app.screen.height); i++) {
             const sprite = new PIXI.Sprite(fireflyTexture);
             sprite.blendMode = "add";
             app.stage.addChild(sprite);
             fireflies.push({ sprite, speed: 0.4 + Math.random() * 0.7, phase: Math.random() * Math.PI * 2, amp: 10 + Math.random() * 26, rot: 0 });
           }
-          for (let i = 0; i < 26; i++) {
+          for (let i = 0; i < scaledCount(26, app.screen.width, app.screen.height); i++) {
             const sprite = new PIXI.Sprite(pollenTexture);
             sprite.blendMode = "add";
             app.stage.addChild(sprite);
             pollen.push({ sprite, speed: 0.5 + Math.random(), phase: Math.random() * Math.PI * 2, amp: 0, rot: 0 });
           }
-          for (let i = 0; i < 10; i++) {
+          for (let i = 0; i < scaledCount(10, app.screen.width, app.screen.height); i++) {
             const sprite = new PIXI.Sprite(petalTexture);
             sprite.alpha = 0.45;
             app.stage.addChild(sprite);
@@ -275,9 +292,19 @@ export default function GardenCanvas({ plants, focused, onSelect, onFocus, onFai
             const focusScale = currentFocus && currentFocus === plant.category ? 1.12 : 1;
             const dim = currentFocus && currentFocus !== plant.category ? 0.22 : 1;
             const breathe = plant.stage === "fruit" ? 1 + Math.sin(elapsed * 1.4 + entry.phase) * 0.02 : 1;
-            const hover = entry.hovered ? 1.06 : 1;
+            const active = entry.hovered || entry.pressed;
+            const hover = active ? 1.06 : 1;
             const scale = (base / sprite.texture.width) * ease * focusScale * breathe * hover;
             sprite.scale.set(scale);
+            if (coarse) {
+              const need = 44 / Math.max(0.0001, scale);
+              const hitW = Math.max(sprite.texture.width, need);
+              const hitH = Math.max(sprite.texture.height, need);
+              entry.hitArea.x = -hitW / 2;
+              entry.hitArea.y = -hitH;
+              entry.hitArea.width = hitW;
+              entry.hitArea.height = hitH;
+            }
             sprite.alpha = ease * dim;
             const sway = Math.sin(elapsed * 0.9 + entry.phase) * 0.022 + Math.sin(elapsed * 1.7 + entry.phase * 2) * 0.008;
             sprite.rotation = plant.stage === "withered" ? 0.12 : sway;
@@ -285,10 +312,10 @@ export default function GardenCanvas({ plants, focused, onSelect, onFocus, onFai
             const x = plant.x * app.screen.width + parallax.x * depth;
             const y = plant.y * app.screen.height + parallax.y * depth;
             sprite.position.set(x, y);
-            sprite.zIndex = Math.round(plant.y * 1000) + (entry.hovered ? 5000 : 0);
+            sprite.zIndex = Math.round(plant.y * 1000) + (active ? 5000 : 0);
             glow.position.set(x, y);
             glow.scale.set(scale);
-            glow.alpha = ease * dim * (entry.hovered ? 0.34 : 0.22);
+            glow.alpha = ease * dim * (active ? 0.34 : 0.22);
             glow.zIndex = sprite.zIndex - 1;
           }
 

@@ -98,6 +98,8 @@ export function GardenView({ mode }: { mode: Mode }) {
             placeholder="Search your garden…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            enterKeyHint="search"
+            autoComplete="off"
           />
           <Link className="btn btn-primary" href="/plant">
             <Icon name="plus" /> Plant
@@ -129,22 +131,24 @@ export function GardenView({ mode }: { mode: Mode }) {
           />
         )}
 
-        {Object.entries(SECTIONS).map(([category, rect]) => {
-          const count = counts.get(category) ?? 0;
-          if (query && count === 0) return null;
-          const meta = CATEGORIES[category as Category] ?? CATEGORIES.feeling;
-          return (
-            <button
-              key={category}
-              className={`zone-badge${focused === category ? " on" : ""}`}
-              style={{ left: `${(rect.x + rect.w / 2) * 100}%`, top: `${(rect.y + rect.h / 2 - 0.05) * 100}%` }}
-              onClick={() => setFocused(focused === category ? null : category)}
-            >
-              <Icon name={meta.icon} /> {meta.label}
-              <b>{count}</b>
-            </button>
-          );
-        })}
+        <div className="zone-strip">
+          {Object.entries(SECTIONS).map(([category, rect]) => {
+            const count = counts.get(category) ?? 0;
+            if (query && count === 0) return null;
+            const meta = CATEGORIES[category as Category] ?? CATEGORIES.feeling;
+            return (
+              <button
+                key={category}
+                className={`zone-badge${focused === category ? " on" : ""}`}
+                style={{ left: `${(rect.x + rect.w / 2) * 100}%`, top: `${(rect.y + rect.h / 2 - 0.05) * 100}%` }}
+                onClick={() => setFocused(focused === category ? null : category)}
+              >
+                <Icon name={meta.icon} /> {meta.label}
+                <b>{count}</b>
+              </button>
+            );
+          })}
+        </div>
 
         {focused && (
           <aside className="section-panel card">
@@ -153,7 +157,7 @@ export function GardenView({ mode }: { mode: Mode }) {
                 <Icon name={CATEGORIES[focused as Category]?.icon ?? "leaf"} />{" "}
                 {CATEGORIES[focused as Category]?.label ?? focused}
               </span>
-              <button className="icon-btn" onClick={() => setFocused(null)} title="Close">
+              <button className="icon-btn" onClick={() => setFocused(null)} title="Close" aria-label="Close">
                 <Icon name="close" />
               </button>
             </header>
@@ -162,7 +166,7 @@ export function GardenView({ mode }: { mode: Mode }) {
                 {focusedPlants.map((plant) => (
                   <li key={plant.id}>
                     <button onClick={() => openPlant(plant.id)}>
-                      <img src={artOf(plant)} alt="" />
+                      <img src={artOf(plant)} alt="" loading="lazy" decoding="async" />
                       <span>
                         <b>{plant.title || "Untitled"}</b>
                         <em>{STAGE_LABEL[plant.stage]}</em>

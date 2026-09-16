@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { apiFetch } from "@/lib/api-client";
+import { fineFocus } from "@/lib/focus";
 import { artOfSpecies, SPECIES, SPECIES_KEYS } from "@/lib/species";
 import { toast } from "@/lib/toast";
 import type { Species } from "@/lib/types";
@@ -60,7 +61,9 @@ export default function GrowPage() {
             placeholder="Who is it for?"
             value={forName}
             onChange={(event) => setForName(event.target.value)}
-            autoFocus
+            ref={fineFocus}
+            autoComplete="name"
+            enterKeyHint="next"
           />
           <div className="for-fields">
             <input
@@ -68,6 +71,8 @@ export default function GrowPage() {
               placeholder="Their email (optional)"
               value={forEmail}
               onChange={(event) => setForEmail(event.target.value)}
+              autoComplete="email"
+              enterKeyHint="next"
             />
             <label className="date-field">
               <span>
@@ -100,6 +105,7 @@ export default function GrowPage() {
             placeholder="Add a title (optional)"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
+            enterKeyHint="done"
           />
           <button className="btn btn-primary" disabled={busy}>
             <Icon name="sprout" /> Plant it for them

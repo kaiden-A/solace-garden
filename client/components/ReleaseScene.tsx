@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api-client";
+import { fineFocus } from "@/lib/focus";
 import { toast } from "@/lib/toast";
 import { Icon } from "./Icon";
-import { makeDotTexture, makeRadialTexture, makeStreakTexture } from "./pixi-utils";
+import { makeDotTexture, makeRadialTexture, makeStreakTexture, makeTouchScrollable, pixiResolution, scaledCount } from "./pixi-utils";
 
 interface SceneApi {
   setHolding: (holding: boolean) => void;
@@ -58,13 +59,14 @@ export default function ReleaseScene() {
           backgroundAlpha: 0,
           resizeTo: host,
           autoDensity: true,
-          resolution: Math.min(window.devicePixelRatio || 1, 2),
+          resolution: pixiResolution(),
         });
         if (disposed) {
           app.destroy(true);
           return;
         }
         host.appendChild(app.canvas);
+        makeTouchScrollable(app);
         app.stage.sortableChildren = true;
         app.stage.alpha = 0;
 
@@ -108,7 +110,7 @@ export default function ReleaseScene() {
           by: number;
         }
         const drops: Drop[] = [];
-        const dropCount = reduced ? 24 : 80;
+        const dropCount = reduced ? 24 : scaledCount(80, app.screen.width, app.screen.height);
         for (let i = 0; i < dropCount; i++) {
           const sprite = new PIXI.Sprite(streakTexture);
           sprite.alpha = 0.3 + Math.random() * 0.3;
@@ -154,7 +156,7 @@ export default function ReleaseScene() {
         const spawnEmbers = () => {
           const cx = app.screen.width * 0.72;
           const cy = app.screen.height * 0.8;
-          const count = reduced ? 30 : 130;
+          const count = reduced ? 30 : scaledCount(130, app.screen.width, app.screen.height);
           for (let i = 0; i < count; i++) {
             const sprite = new PIXI.Sprite(emberTextures[i % emberTextures.length]);
             sprite.blendMode = "add";
@@ -314,7 +316,7 @@ export default function ReleaseScene() {
               placeholder="What do you want to release?"
               value={text}
               onChange={(event) => setText(event.target.value)}
-              autoFocus
+              ref={fineFocus}
             />
             <button
               type="button"

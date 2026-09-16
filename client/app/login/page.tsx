@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { fineFocus } from "@/lib/focus";
 
 function LoginForm() {
   const router = useRouter();
@@ -63,7 +64,9 @@ function LoginForm() {
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             required
-            autoFocus
+            ref={fineFocus}
+            autoComplete="email"
+            enterKeyHint="next"
           />
           <input
             type="password"
@@ -71,6 +74,8 @@ function LoginForm() {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             required
+            autoComplete="current-password"
+            enterKeyHint="go"
           />
           {error && <p className="auth-error">{error}</p>}
           <button className="btn btn-primary" disabled={busy}>

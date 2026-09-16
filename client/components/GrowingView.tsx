@@ -59,7 +59,7 @@ export function GrowingView() {
                   className={`art harvest-art stage-${plant.stage}`}
                   style={{ "--glow": meta.glow } as CSSProperties}
                 >
-                  <img src={artOf(plant)} alt="" />
+                  <img src={artOf(plant)} alt="" loading="lazy" decoding="async" />
                 </div>
               </div>
               <span className="chip chip-for">

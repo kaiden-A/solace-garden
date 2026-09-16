@@ -19,6 +19,15 @@ export function WelcomeModal() {
     if (!sessionStorage.getItem("solace.seen")) setOpen(true);
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [open]);
+
   const close = () => {
     sessionStorage.setItem("solace.seen", "1");
     setOpen(false);
@@ -33,8 +42,8 @@ export function WelcomeModal() {
         if (event.target === event.currentTarget) close();
       }}
     >
-      <div className="modal card">
-        <button className="modal-x" onClick={close} title="Close">
+      <div className="modal card" role="dialog" aria-modal="true" aria-label="What would you like to do?">
+        <button className="modal-x" onClick={close} title="Close" aria-label="Close">
           <Icon name="close" />
         </button>
         <h2>What would you like to do?</h2>

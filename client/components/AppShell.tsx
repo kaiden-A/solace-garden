@@ -43,7 +43,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Link className="brand" href="/">
           <Icon name="sprout" /> <span>Solace</span>
         </Link>
-        <nav>
+        <nav className="side-nav">
           <Link href="/">
             <Icon name="home" /> Home
           </Link>
@@ -58,7 +58,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="user-row">
               <span className="avatar">{me.name.slice(0, 1).toUpperCase()}</span>
               <span className="user-name">{me.name}</span>
-              <button className="icon-btn" onClick={logout} title="Sign out">
+              <button className="icon-btn" onClick={logout} title="Sign out" aria-label="Sign out">
                 <Icon name="logout" />
               </button>
             </div>
@@ -71,6 +71,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </main>
+      <nav className="tabbar" aria-label="Primary">
+        {NAV.map((item) => (
+          <Link key={item.route} className={active === item.route ? "on" : ""} href={`/${item.route}`}>
+            <Icon name={item.icon} />
+            <span>{item.label}</span>
+          </Link>
+        ))}
+      </nav>
       <Toaster />
     </div>
   );

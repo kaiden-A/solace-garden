@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { apiFetch } from "@/lib/api-client";
 import { CATEGORIES, CATEGORY_KEYS } from "@/lib/categories";
+import { fineFocus } from "@/lib/focus";
 import { artOfSpecies } from "@/lib/species";
 import { toast } from "@/lib/toast";
 import type { Category } from "@/lib/types";
@@ -62,12 +63,13 @@ export default function PlantPage() {
             placeholder="What would you like to plant today?"
             value={body}
             onChange={(event) => setBody(event.target.value)}
-            autoFocus
+            ref={fineFocus}
           />
           <input
             placeholder="Add a title (optional)"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
+            enterKeyHint="done"
           />
           <button className="btn btn-primary" disabled={busy}>
             <Icon name="sprout" /> Plant

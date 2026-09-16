@@ -28,7 +28,13 @@ export function PlantSprite({
   } as CSSProperties;
 
   return (
-    <button className={`plant stage-${plant.stage}`} style={style} title={plant.title || "Untitled"} onClick={onOpen}>
+    <button
+      className={`plant stage-${plant.stage}`}
+      style={style}
+      title={plant.title || "Untitled"}
+      aria-label={plant.title || "Untitled"}
+      onClick={onOpen}
+    >
       {broken ? (
         <span className="icon-fallback">
           <Icon name={meta.icon} />

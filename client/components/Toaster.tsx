@@ -16,8 +16,13 @@ export function Toaster() {
     return () => registerToastListener(null);
   }, []);
 
+  const dismiss = () => {
+    if (timer.current) clearTimeout(timer.current);
+    setMessage(null);
+  };
+
   return (
-    <div className={`toast${message ? " show" : ""}`} aria-live="polite">
+    <div className={`toast${message ? " show" : ""}`} aria-live="polite" onClick={dismiss}>
       {message}
     </div>
   );

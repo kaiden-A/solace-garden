@@ -7,6 +7,7 @@ import { Icon } from "@/components/Icon";
 import WindScene from "@/components/WindScene";
 import { apiFetch } from "@/lib/api-client";
 import { CATEGORIES, STAGE_LABEL } from "@/lib/categories";
+import { fineFocus } from "@/lib/focus";
 import { artOf, metaOf } from "@/lib/species";
 import { toast } from "@/lib/toast";
 import type { PublicPlant } from "@/lib/types";
@@ -173,7 +174,7 @@ export default function PlantDetailPage() {
                 placeholder={plant.forWhom ? "What do you feel for them right now?" : "What changed since last time?"}
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
-                autoFocus
+                ref={fineFocus}
               />
               <button className="btn btn-primary">Tend it</button>
             </form>

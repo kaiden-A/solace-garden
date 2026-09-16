@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Cormorant_Garamond, Inter } from "next/font/google";
 import { MusicProvider } from "@/components/Music";
 import "./globals.css";
@@ -18,6 +18,15 @@ const ui = Inter({
 export const metadata: Metadata = {
   title: "Solace",
   description: "Some things need somewhere to go.",
+  appleWebApp: { capable: true, title: "Solace", statusBarStyle: "black-translucent" },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#131120",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

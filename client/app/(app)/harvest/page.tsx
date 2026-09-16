@@ -5,6 +5,7 @@ import type { CSSProperties } from "react";
 import { Icon } from "@/components/Icon";
 import { apiFetch } from "@/lib/api-client";
 import { STAGE_LABEL } from "@/lib/categories";
+import { fineFocus } from "@/lib/focus";
 import { mailtoFor } from "@/lib/mailto";
 import { artOf, SPECIES, speciesOf } from "@/lib/species";
 import { toast } from "@/lib/toast";
@@ -106,7 +107,7 @@ export default function HarvestPage() {
               {isHarvesting && <span className="harvest-burst" aria-hidden="true" />}
               <div className="arch">
                 <div className="art harvest-art stage-fruit" style={{ "--glow": meta.glow } as CSSProperties}>
-                  <img src={artOf(plant)} alt="" />
+                  <img src={artOf(plant)} alt="" loading="lazy" decoding="async" />
                 </div>
               </div>
               <span className="chip chip-for">
@@ -140,8 +141,20 @@ export default function HarvestPage() {
                 </div>
               ) : giving === plant.id ? (
                 <form className="give-form" onSubmit={(event) => give(event, plant)}>
-                  <input placeholder="Who is it for?" value={to} onChange={(event) => setTo(event.target.value)} autoFocus />
-                  <input placeholder="Add a note (optional)" value={note} onChange={(event) => setNote(event.target.value)} />
+                  <input
+                    placeholder="Who is it for?"
+                    value={to}
+                    onChange={(event) => setTo(event.target.value)}
+                    ref={fineFocus}
+                    autoComplete="name"
+                    enterKeyHint="next"
+                  />
+                  <input
+                    placeholder="Add a note (optional)"
+                    value={note}
+                    onChange={(event) => setNote(event.target.value)}
+                    enterKeyHint="done"
+                  />
                   <button className="btn btn-primary">Create the gift</button>
                 </form>
               ) : isHarvesting ? (
