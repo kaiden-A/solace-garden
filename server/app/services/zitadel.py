@@ -1,0 +1,102 @@
+"""Minimal, explicit OIDC client for Zitadel (Elysiaa SSO).
+
+Deliberately plain: httpx for the protocol calls, PyJWT for JWKS verification.
+No client secret - the app is a PKCE public client and the code exchange
+happens server-side, so the verifier never leaves this process.
+"""
+
+from dataclasses import dataclass, field
+from urllib.parse import urlencode
+
+import httpx
+import jwt
+
+SCOPE = "openid profile email"
+
+
+class ZitadelError(RuntimeError):
+    pass
+
+
+@dataclass
+class ZitadelClient:
+    issuer: str
+    client_id: str
+    http: httpx.Client
+    jwks: dict | None = None  # test seam: skip fetching the key set
+    _discovery: dict | None = field(default=None, init=False, repr=False)
+
+    def discovery(self) -> dict:
+        if self._discovery is None:
+            url = f"{self.issuer.rstrip('/')}/.well-known/openid-configuration"
+            response = self.http.get(url)
+            response.raise_for_status()
+            self._discovery = dict(response.json())
+        return self._discovery
+
+    def authorize_url(
+        self,
+        *,
+        state: str,
+        nonce: str,
+        code_challenge: str,
+        redirect_uri: str,
+    ) -> str:
+        params = {
+            "client_id": self.client_id,
+            "response_type": "code",
+            "scope": SCOPE,
+            "redirect_uri": redirect_uri,
+            "state": state,
+            "nonce": nonce,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+        }
+        return f"{self.discovery()['authorization_endpoint']}?{urlencode(params)}"
+
+    def exchange_code(self, *, code: str, code_verifier: str, redirect_uri: str) -> dict:
+        payload = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "client_id": self.client_id,
+            "code_verifier": code_verifier,
+        }
+        response = self.http.post(self.discovery()["token_endpoint"], data=payload)
+        if response.status_code >= 400:
+            raise ZitadelError(f"token exchange failed ({response.status_code}): {response.text}")
+        return response.json()
+
+    def verify_id_token(self, id_token: str, *, nonce: str) -> dict:
+        key_set = self.jwks if self.jwks is not None else self._fetch_jwks()
+        kid = jwt.get_unverified_header(id_token).get("kid")
+        try:
+            parsed = jwt.PyJWKSet.from_dict(key_set)
+            key = parsed[kid] if kid else parsed.keys[0]
+        except (jwt.PyJWTError, KeyError, IndexError) as exc:
+            raise ZitadelError(f"unknown signing key: {exc}") from exc
+
+        algorithms = self.discovery().get("id_token_signing_alg_values_supported") or ["RS256"]
+        claims = jwt.decode(
+            id_token,
+            key.key,
+            algorithms=[alg for alg in algorithms if alg != "none"],
+            audience=self.client_id,
+            issuer=self.issuer.rstrip("/"),
+            options={"require": ["exp", "iat", "sub", "aud", "iss"]},
+        )
+        if claims.get("nonce") != nonce:
+            raise ZitadelError("nonce mismatch")
+        return claims
+
+    def end_session_url(self, *, id_token_hint: str | None = None) -> str:
+        endpoint = self.discovery()["end_session_endpoint"]
+        params = {"client_id": self.client_id}
+        if id_token_hint:
+            params["id_token_hint"] = id_token_hint
+        return f"{endpoint}?{urlencode(params)}"
+
+    def _fetch_jwks(self) -> dict:
+        response = self.http.get(self.discovery()["jwks_uri"])
+        response.raise_for_status()
+        return response.json()

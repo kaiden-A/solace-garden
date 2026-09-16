@@ -63,6 +63,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </button>
             </div>
           )}
+          {me?.kind === "guest" && (
+            <Link
+              href="/signup"
+              style={{ display: "block", margin: "6px 2px 10px", fontSize: 12, opacity: 0.75 }}
+            >
+              Sign in to keep this garden →
+            </Link>
+          )}
           <MusicMini />
         </div>
       </aside>

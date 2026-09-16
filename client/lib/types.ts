@@ -57,6 +57,7 @@ export interface PublicUser {
   id: string;
   name: string;
   email: string;
+  kind?: "member" | "guest";
 }
 
 export interface GiftPayload {

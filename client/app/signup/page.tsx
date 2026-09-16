@@ -4,28 +4,19 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
-import { fineFocus } from "@/lib/focus";
 
 export default function SignupPage() {
   const router = useRouter();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const guest = async () => {
     setBusy(true);
     setError("");
-    const res = await fetch("/api/auth/signup", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name, email, password }),
-    });
+    const res = await fetch("/api/auth/guest", { method: "POST" });
+    setBusy(false);
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      setBusy(false);
       setError(data.error ?? "Something went wrong.");
       return;
     }
@@ -42,39 +33,20 @@ export default function SignupPage() {
         <h1>Begin your garden</h1>
         <p className="sub">A quiet place that&apos;s only yours.</p>
 
-        <form className="auth-form" onSubmit={submit}>
-          <input
-            placeholder="Your name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            required
-            ref={fineFocus}
-            autoComplete="name"
-            enterKeyHint="next"
-          />
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            required
-            autoComplete="email"
-            enterKeyHint="next"
-          />
-          <input
-            type="password"
-            placeholder="Password (4+ characters)"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-            autoComplete="new-password"
-            enterKeyHint="done"
-          />
+        <div className="auth-form">
+          <a className="btn btn-primary" href="/api/auth/signup?next=/garden">
+            Create your garden with Elysiaa
+          </a>
           {error && <p className="auth-error">{error}</p>}
-          <button className="btn btn-primary" disabled={busy}>
-            {busy ? "Planting…" : "Create my garden"}
-          </button>
-        </form>
+        </div>
+
+        <div className="auth-divider">
+          <span>or</span>
+        </div>
+
+        <button className="btn btn-ghost" onClick={guest} disabled={busy}>
+          <Icon name="leaf" /> {busy ? "Opening the gate…" : "Look around as guest"}
+        </button>
 
         <p className="auth-alt">
           Already have one? <Link href="/login">Sign in</Link>
