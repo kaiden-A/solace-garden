@@ -1,0 +1,34 @@
+# Version control & tooling
+.git
+.gitignore
+.github
+
+# Virtualenvs, bytecode, build artefacts
+.venv
+**/__pycache__
+*.py[cod]
+*.egg-info
+dist
+build
+
+# Dev-only caches
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.pyright
+
+# Tests, docs and dev-only config are not needed in the image
+tests
+fastapi-folder.md
+pyrightconfig.json
+
+# Local secrets: Cloud Run supplies the real values as env vars
+.env
+.env.*
+
+# Editors & OS noise
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+*.log
