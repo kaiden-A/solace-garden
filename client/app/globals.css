@@ -1,6 +1,8 @@
 :root {
   --bg: #131120;
   --panel: rgba(30, 27, 48, 0.72);
+  /* the painting behind the single-plant views (see .view:has(.scene.plants)) */
+  --scene-plants: url("/assets/plant-scene.jpg");
   --line: rgba(255, 255, 255, 0.09);
   --text: #f4efe4;
   --muted: #a49ec4;
@@ -65,6 +67,37 @@ p { margin: 0; }
     linear-gradient(rgba(19, 17, 32, 0.04), rgba(19, 17, 32, 0.3)),
     var(--scene),
     radial-gradient(120% 90% at 50% 108%, #4a3a6b 0%, #241f42 45%, #131120 100%);
+}
+/* The single-plant views (plants/[id], /plant, /grow) sit on one quiet corner of
+   the same garden. The painting is painted on the scroll container itself - a
+   scrollport background never scrolls with the content and always covers the
+   view - and the scrims ride on top of it there too, so nothing can scroll or
+   end early. `.scene.plants` is just the hook that switches it on. */
+.view:has(.scene.plants) {
+  background-color: #131120;
+  background-image:
+    linear-gradient(100deg, rgba(13, 12, 22, 0.82) 0%, rgba(13, 12, 22, 0.52) 34%, rgba(13, 12, 22, 0.06) 60%),
+    linear-gradient(rgba(19, 17, 32, 0.12), rgba(19, 17, 32, 0.5)),
+    var(--scene-plants);
+  /* the painting is zoomed a touch and nudged so the lantern sits clear of the
+     flower; the scrims always cover the whole view */
+  background-size: cover, cover, 122%;
+  background-position: 0 0, 0 0, 70% 46%;
+  background-repeat: no-repeat;
+}
+/* a wide, short window keeps the zoom; anything portrait-ish (phones) uses plain
+   cover, because a percentage width can leave the painting too short to fill */
+@media (max-aspect-ratio: 3 / 2) {
+  .view:has(.scene.plants) {
+    background-size: cover, cover, cover;
+    background-position: 0 0, 0 0, 62% 46%;
+  }
+}
+/* the base .scene would otherwise paint the default dusk image over the
+   painting, and its opaque background colour would hide it too */
+.scene.plants {
+  background-color: transparent;
+  background-image: none;
 }
 
 .fireflies { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
@@ -240,7 +273,7 @@ textarea:focus, input:focus { border-color: rgba(255, 184, 107, 0.55); box-shado
 .music-controls .btn { padding: 7px 16px; font-size: 12.5px; flex-shrink: 0; }
 
 .main { display: flex; flex-direction: column; min-width: 0; height: 100vh; height: 100dvh; }
-.view { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; animation: viewIn 0.38s ease; }
+.view { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; animation: viewIn 0.38s ease; }
 @keyframes viewIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
 .topbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 26px 34px 18px; flex-shrink: 0; }
@@ -352,6 +385,41 @@ textarea:focus, input:focus { border-color: rgba(255, 184, 107, 0.55); box-shado
 
 .art { position: relative; display: inline-flex; align-items: flex-end; justify-content: center; }
 .art img { display: block; width: 100%; height: auto; }
+
+/* Blending a plant into a painted scene: the mound dissolves into the ground, a
+   contact shadow grounds it, and the flower's glow spills onto the soil. */
+.on-scene img {
+  -webkit-mask-image: linear-gradient(to top, transparent 0%, #000 10%);
+  mask-image: linear-gradient(to top, transparent 0%, #000 10%);
+}
+.on-scene::before,
+.on-scene::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.on-scene::before {
+  width: 74%;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(50% 50% at 50% 50%, rgba(0, 0, 0, 0.55), transparent 72%);
+}
+.on-scene::after {
+  width: 190%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--glow, #ffb86b), transparent 72%);
+  opacity: 0.2;
+  filter: blur(12px);
+  mix-blend-mode: screen;
+  animation: breathe 7s ease-in-out infinite;
+}
+@keyframes breathe {
+  50% { opacity: 0.34; }
+}
 .art.wilted img { filter: grayscale(1) brightness(0.7); }
 .art.big { width: 220px; height: 260px; }
 .art.big img { width: 196px; }
@@ -385,6 +453,18 @@ textarea:focus, input:focus { border-color: rgba(255, 184, 107, 0.55); box-shado
 .art.form-art img { width: 196px; }
 
 .detail { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 26px; padding: 0 34px 40px; align-items: start; }
+.detail-screen { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+/* the painting's lit ground sits lower than the art column, so the plant is
+   nudged down to stand on it; ghost buttons get a darker glass to stay legible */
+.detail-screen .detail-art { padding-top: 186px; }
+.detail-screen .btn-ghost { background: rgba(13, 11, 24, 0.5); }
+/* the glass picks the painting up, which is what gives the input card its design */
+.detail-screen .card,
+.form-screen .card { background: rgba(24, 21, 40, 0.55); backdrop-filter: blur(18px) saturate(1.05); }
+.detail-screen .card .card,
+.form-screen .card .card { background: rgba(15, 13, 26, 0.5); }
+.form-screen input,
+.form-screen textarea { background: rgba(13, 11, 24, 0.72); }
 .detail-card h1 { font-size: 33px; margin-bottom: 12px; }
 .meta { color: var(--muted); font-size: 13.5px; margin: 14px 0 20px; }
 blockquote { margin: 0; font-family: var(--font-display); font-size: 22px; line-height: 1.6; color: #f8f4ea; font-style: italic; padding-left: 18px; border-left: 2px solid rgba(255, 184, 107, 0.45); }

@@ -104,7 +104,7 @@ export default function PlantDetailPage() {
   const last = plant.events[plant.events.length - 1]?.at ?? plant.createdAt;
 
   return (
-    <>
+    <div className="detail-screen scene plants">
       <div className="topbar">
         <div>
           <Link className="back" href="/garden">
@@ -157,7 +157,7 @@ export default function PlantDetailPage() {
 
         <aside className="detail-art">
           <div
-            className={`art big stage-${plant.stage}${plant.stage === "withered" ? " wilted" : ""}${
+            className={`art big on-scene stage-${plant.stage}${plant.stage === "withered" ? " wilted" : ""}${
               grew ? " grew" : ""
             }`}
             style={{ "--glow": meta.glow } as React.CSSProperties}
@@ -213,6 +213,6 @@ export default function PlantDetailPage() {
       </div>
 
       {windOpen && plant && <WindScene plant={plant} onDone={() => router.push("/garden")} />}
-    </>
+    </div>
   );
 }

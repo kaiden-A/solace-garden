@@ -52,7 +52,7 @@ export default function GrowPage() {
   };
 
   return (
-    <div className="form-screen">
+    <div className="form-screen scene plants">
       <div className="form-card card">
         <h1>Grow for Someone</h1>
         <p className="sub">Pick a plant, tend it over time, and give it when their time comes.</p>
@@ -115,7 +115,7 @@ export default function GrowPage() {
           Just for yourself? <Link href="/plant">Plant something →</Link>
         </p>
       </div>
-      <div className="art form-art sample">
+      <div className="art form-art sample on-scene">
         <img src={artOfSpecies(species)} alt="" />
       </div>
     </div>

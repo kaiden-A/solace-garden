@@ -41,7 +41,7 @@ export default function PlantPage() {
   };
 
   return (
-    <div className="form-screen">
+    <div className="form-screen scene plants">
       <div className="form-card card">
         <h1>Plant Something</h1>
         <p className="sub">Write what&apos;s in your heart. Let it take root.</p>
@@ -79,7 +79,7 @@ export default function PlantPage() {
           Growing this for someone? <Link href="/grow">Grow one for them →</Link>
         </p>
       </div>
-      <div className="art form-art sample">
+      <div className="art form-art sample on-scene">
         <img src={artOfSpecies(CATEGORIES[category].species)} alt="" />
       </div>
     </div>
