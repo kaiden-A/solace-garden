@@ -12,17 +12,25 @@ const RESEED = process.env.RESEED !== "0";
 const ALLOW_ISSUES = process.env.ALLOW_ISSUES === "1";
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(",")) : null;
 
-const users = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "users.json"), "utf8"));
-const guest = users.find((u) => u.guest);
-const plants = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "plants.json"), "utf8"));
+fs.mkdirSync(OUT, { recursive: true });
+
+// The server mints guest gardens on demand; a brand new guest arrives with a
+// full copy of the demo garden to photograph.
+const guestRes = await fetch(`${BASE}/api/auth/guest`, { method: "POST" });
+if (!guestRes.ok) throw new Error(`could not create a guest session: ${guestRes.status}`);
+const cookie = (guestRes.headers.get("set-cookie") ?? "").split(";")[0];
+const session = cookie.split("=")[1];
+if (!session) throw new Error("guest session came back without a cookie");
+
+const plantsRes = await fetch(`${BASE}/api/plants`, { headers: { cookie } });
+const plants = await plantsRes.json();
+if (!Array.isArray(plants) || !plants.length) throw new Error("guest garden came back empty");
 const firstPlant = plants[0];
 const letterPlant = plants.find((p) => p.forWhom) ?? plants[0];
 
-fs.mkdirSync(OUT, { recursive: true });
-
 const giveRes = await fetch(`${BASE}/api/plants/${letterPlant.id}/give`, {
   method: "POST",
-  headers: { "content-type": "application/json", cookie: `solace_session=${guest.id}` },
+  headers: { "content-type": "application/json", cookie },
   body: JSON.stringify({ to: "Mom", note: "Read it when you are ready." }),
 });
 const gifted = await giveRes.json();
@@ -141,7 +149,7 @@ const shootDevice = async (name, device) => {
   const client = await page.createCDPSession();
   await client.send("Network.setCookie", {
     name: "solace_session",
-    value: guest.id,
+    value: session,
     domain: "localhost",
     path: "/",
   });
@@ -172,7 +180,7 @@ const shootDevice = async (name, device) => {
     const welcomeClient = await welcome.createCDPSession();
     await welcomeClient.send("Network.setCookie", {
       name: "solace_session",
-      value: guest.id,
+      value: session,
       domain: "localhost",
       path: "/",
     });

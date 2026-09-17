@@ -65,10 +65,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           )}
           {me?.kind === "guest" && (
             <Link
+              className="guest-cta"
               href="/signup"
-              style={{ display: "block", margin: "6px 2px 10px", fontSize: 12, opacity: 0.75 }}
+              title="Sign in to keep this garden"
+              aria-label="Sign in to keep this garden"
             >
-              Sign in to keep this garden →
+              <Icon name="heart" />
+              <span>Sign in to keep this garden →</span>
             </Link>
           )}
           <MusicMini />
