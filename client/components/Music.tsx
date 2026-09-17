@@ -17,6 +17,7 @@ export interface VideoInfo {
 interface YTPlayer {
   playVideo(): void;
   pauseVideo(): void;
+  seekTo(seconds: number, allowSeekAhead: boolean): void;
   loadVideoById(id: string): void;
   setVolume(volume: number): void;
   destroy(): void;
@@ -50,6 +51,14 @@ function loadYT(): Promise<YTNamespace | null> {
 }
 
 type Mode = "off" | "ambient" | "yt";
+export type RepeatMode = "off" | "one" | "all";
+
+// The YouTube states worth reacting to.
+const YT_ENDED = 0;
+const YT_PLAYING = 1;
+const YT_PAUSED = 2;
+
+const MAX_QUEUE = 25;
 
 async function fetchJson<T>(path: string): Promise<T | null> {
   try {
@@ -66,11 +75,17 @@ interface MusicState {
   playing: boolean;
   video: VideoInfo | null;
   volume: number;
+  repeat: RepeatMode;
+  queue: VideoInfo[];
+  index: number;
 }
 
 interface SavedMusic {
   video?: VideoInfo;
   volume?: number;
+  repeat?: RepeatMode;
+  queue?: VideoInfo[];
+  index?: number;
 }
 
 interface RecentsResponse {
@@ -81,10 +96,14 @@ interface RecentsResponse {
 interface MusicApi extends MusicState {
   attachHolder: (el: HTMLDivElement | null) => void;
   playAmbient: () => void;
-  playVideo: (video: VideoInfo) => void;
+  playVideo: (video: VideoInfo, list?: VideoInfo[]) => void;
   toggle: () => void;
   stop: () => void;
   setVolume: (volume: number) => void;
+  next: () => void;
+  previous: () => void;
+  jumpTo: (index: number) => void;
+  cycleRepeat: () => void;
   recents: VideoInfo[];
   popular: VideoInfo[];
 }
@@ -98,7 +117,15 @@ export function useMusic(): MusicApi {
 }
 
 export function MusicProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<MusicState>({ mode: "off", playing: false, video: null, volume: 0.55 });
+  const [state, setState] = useState<MusicState>({
+    mode: "off",
+    playing: false,
+    video: null,
+    volume: 0.55,
+    repeat: "all",
+    queue: [],
+    index: 0,
+  });
   const [recents, setRecents] = useState<VideoInfo[]>([]);
   const [popular, setPopular] = useState<VideoInfo[]>([]);
   const stateRef = useRef(state);
@@ -108,7 +135,16 @@ export function MusicProvider({ children }: { children: ReactNode }) {
   const playerRef = useRef<YTPlayer | null>(null);
   const holderRef = useRef<HTMLDivElement | null>(null);
   const playerHolderRef = useRef<HTMLDivElement | null>(null);
+  /** Which video the player actually holds, and its last reported state. */
+  const loadedIdRef = useRef<string | null>(null);
+  const playerStateRef = useRef<number>(-1);
+  /** Set on ENDED and cleared on PLAYING: YouTube also reports "cued" after the
+      end, so the state alone is not a reliable "this one has finished" test. */
+  const endedRef = useRef(false);
+  const advanceRef = useRef<(delta: number) => void>(() => {});
   const [holderTick, setHolderTick] = useState(0);
+  /** The saved state is only persisted once it has been read back. */
+  const [hydrated, setHydrated] = useState(false);
 
   const attachHolder = useCallback((el: HTMLDivElement | null) => {
     holderRef.current = el;
@@ -127,13 +163,20 @@ export function MusicProvider({ children }: { children: ReactNode }) {
     } catch {
       /* ignore */
     }
+
     const savedVideo = saved?.video ?? null;
+    const queue = saved?.queue?.length ? saved.queue.slice(0, MAX_QUEUE) : savedVideo ? [savedVideo] : [];
+    const index = Math.min(Math.max(0, saved?.index ?? 0), Math.max(0, queue.length - 1));
     setState((s) => ({
       ...s,
       mode: savedVideo ? "yt" : s.mode,
       video: savedVideo,
       volume: saved?.volume ?? s.volume,
+      repeat: saved?.repeat ?? s.repeat,
+      queue,
+      index,
     }));
+    setHydrated(true);
 
     let cancelled = false;
     void (async () => {
@@ -146,7 +189,14 @@ export function MusicProvider({ children }: { children: ReactNode }) {
         signedInRef.current = true;
         setRecents(mine.results);
         if (!savedVideo && mine.results[0]) {
-          setState((s) => ({ ...s, mode: "yt", video: mine.results[0], playing: false }));
+          setState((s) => ({
+            ...s,
+            mode: "yt",
+            video: mine.results[0],
+            queue: mine.results.slice(0, MAX_QUEUE),
+            index: 0,
+            playing: false,
+          }));
         }
       }
       if (serverPopular) setPopular(serverPopular);
@@ -157,16 +207,27 @@ export function MusicProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!hydrated) return;
     try {
-      localStorage.setItem("solace.music", JSON.stringify({ video: state.video, volume: state.volume }));
+      localStorage.setItem(
+        "solace.music",
+        JSON.stringify({
+          video: state.video,
+          volume: state.volume,
+          repeat: state.repeat,
+          queue: state.queue.slice(0, MAX_QUEUE),
+          index: state.index,
+        }),
+      );
     } catch {
       /* ignore */
     }
-  }, [state.video, state.volume]);
+  }, [hydrated, state.video, state.volume, state.repeat, state.queue, state.index]);
 
-  const ensurePlayer = useCallback(async (video: VideoInfo) => {
+  const startTrack = useCallback(async (video: VideoInfo, restart = false) => {
     const YT = await loadYT();
     if (!YT || !holderRef.current) return;
+
     if (playerRef.current && playerHolderRef.current !== holderRef.current) {
       try {
         playerRef.current.destroy();
@@ -174,11 +235,49 @@ export function MusicProvider({ children }: { children: ReactNode }) {
         /* ignore */
       }
       playerRef.current = null;
+      loadedIdRef.current = null;
     }
+
+    // A finished track is the one case the IFrame player handles badly, so it
+    // gets a fresh player - exactly what refreshing the page used to do.
+    if (playerRef.current && endedRef.current && loadedIdRef.current === video.id) {
+      try {
+        playerRef.current.destroy();
+      } catch {
+        /* ignore */
+      }
+      playerRef.current = null;
+      loadedIdRef.current = null;
+      endedRef.current = false;
+    }
+
+    if (playerRef.current && loadedIdRef.current === video.id) {
+      try {
+        if (restart) playerRef.current.seekTo(0, true);
+        playerRef.current.playVideo();
+        return;
+      } catch {
+        /* fall through and rebuild the player */
+      }
+    }
+
     if (playerRef.current) {
-      playerRef.current.loadVideoById(video.id);
-      return;
+      try {
+        playerRef.current.loadVideoById(video.id);
+        loadedIdRef.current = video.id;
+        endedRef.current = false;
+        return;
+      } catch {
+        try {
+          playerRef.current.destroy();
+        } catch {
+          /* ignore */
+        }
+        playerRef.current = null;
+        loadedIdRef.current = null;
+      }
     }
+
     playerRef.current = new YT.Player(holderRef.current, {
       videoId: video.id,
       playerVars: { autoplay: 1, rel: 0, modestbranding: 1, playsinline: 1, origin: window.location.origin },
@@ -188,22 +287,82 @@ export function MusicProvider({ children }: { children: ReactNode }) {
           event.target.playVideo();
         },
         onStateChange: (event: { data: number }) => {
-          setState((s) => (s.mode === "yt" ? { ...s, playing: event.data === 1 } : s));
+          playerStateRef.current = event.data;
+          if (event.data === YT_PLAYING) {
+            endedRef.current = false;
+            setState((s) => (s.mode === "yt" ? { ...s, playing: true } : s));
+          } else if (event.data === YT_PAUSED) {
+            setState((s) => (s.mode === "yt" ? { ...s, playing: false } : s));
+          } else if (event.data === YT_ENDED) {
+            endedRef.current = true;
+            // Repeat one replays here; otherwise the queue decides what is next.
+            advanceRef.current(stateRef.current.repeat === "one" ? 0 : 1);
+          }
+          // buffering (3), unstarted (-1) and cued (5) leave the flag alone
+        },
+        onError: () => {
+          toast("That one won't play — trying the next.");
+          advanceRef.current(1);
         },
       },
     });
     playerHolderRef.current = holderRef.current;
+    loadedIdRef.current = video.id;
+    endedRef.current = false;
   }, []);
+
+  /** Replays the current track from the top. */
+  const replay = useCallback(() => {
+    const { queue, index } = stateRef.current;
+    const current = queue[index];
+    if (!current) return;
+    setState((s) => ({ ...s, playing: true }));
+    void startTrack(current, true);
+  }, [startTrack]);
+
+  /** Moves through the queue: +1 next, -1 previous, 0 replay this one. */
+  const step = useCallback(
+    (delta: number) => {
+      const { queue, index, repeat, playing } = stateRef.current;
+      if (!queue.length) return;
+      if (delta === 0) {
+        replay();
+        return;
+      }
+
+      let target = index + delta;
+      if (target < 0) {
+        if (repeat !== "all") return;
+        target = queue.length - 1;
+      }
+      if (target >= queue.length) {
+        if (repeat !== "all") {
+          setState((s) => ({ ...s, playing: false }));
+          return;
+        }
+        target = 0;
+      }
+      if (target === index) {
+        if (playing) return;
+        replay();
+        return;
+      }
+      setState((s) => ({ ...s, mode: "yt", video: s.queue[target], index: target, playing: true }));
+    },
+    [replay],
+  );
+  advanceRef.current = step;
 
   useEffect(() => {
     if (state.mode !== "yt" || !state.video) return;
     if (state.playing) {
       audioRef.current?.pause();
-      void ensurePlayer(state.video);
-    } else {
+      void startTrack(state.video);
+    } else if (playerStateRef.current !== YT_ENDED) {
+      // Poking a finished player wedges it for the next play.
       playerRef.current?.pauseVideo();
     }
-  }, [state.mode, state.video, state.playing, ensurePlayer, holderTick]);
+  }, [state.mode, state.video, state.playing, startTrack, holderTick]);
 
   const playAmbient = useCallback(() => {
     const audio = audioRef.current;
@@ -257,9 +416,11 @@ export function MusicProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const playVideo = useCallback(
-    (video: VideoInfo) => {
+    (video: VideoInfo, list?: VideoInfo[]) => {
       audioRef.current?.pause();
-      setState((s) => ({ ...s, mode: "yt", video, playing: true }));
+      const queue = (list?.length ? list : [video]).slice(0, MAX_QUEUE);
+      const index = Math.max(0, queue.findIndex((item) => item.id === video.id));
+      setState((s) => ({ ...s, mode: "yt", video, playing: true, queue, index }));
       void rememberPlay(video);
     },
     [rememberPlay],
@@ -285,9 +446,15 @@ export function MusicProvider({ children }: { children: ReactNode }) {
 
   const stop = useCallback(() => {
     audioRef.current?.pause();
-    playerRef.current?.destroy();
+    try {
+      playerRef.current?.destroy();
+    } catch {
+      /* ignore */
+    }
     playerRef.current = null;
-    setState((s) => ({ ...s, mode: "off", playing: false, video: null }));
+    loadedIdRef.current = null;
+    endedRef.current = false;
+    setState((s) => ({ ...s, mode: "off", playing: false, video: null, queue: [], index: 0 }));
   }, []);
 
   const setVolume = useCallback((volume: number) => {
@@ -297,15 +464,90 @@ export function MusicProvider({ children }: { children: ReactNode }) {
     playerRef.current?.setVolume(Math.round(clamped * 100));
   }, []);
 
+  const next = useCallback(() => step(1), [step]);
+  const previous = useCallback(() => step(-1), [step]);
+  const jumpTo = useCallback(
+    (index: number) => {
+      const { queue, index: current } = stateRef.current;
+      const target = Math.min(Math.max(0, index), queue.length - 1);
+      if (!queue[target]) return;
+      if (target === current) {
+        replay();
+        return;
+      }
+      setState((s) => ({ ...s, mode: "yt", video: s.queue[target], index: target, playing: true }));
+    },
+    [replay],
+  );
+  const cycleRepeat = useCallback(() => {
+    setState((s) => ({ ...s, repeat: s.repeat === "all" ? "one" : s.repeat === "one" ? "off" : "all" }));
+  }, []);
+
   useEffect(() => () => playerRef.current?.destroy(), []);
 
   return (
     <MusicCtx.Provider
-      value={{ ...state, recents, popular, attachHolder, playAmbient, playVideo, toggle, stop, setVolume }}
+      value={{
+        ...state,
+        recents,
+        popular,
+        attachHolder,
+        playAmbient,
+        playVideo,
+        toggle,
+        stop,
+        setVolume,
+        next,
+        previous,
+        jumpTo,
+        cycleRepeat,
+      }}
     >
       {children}
       <audio ref={audioRef} src="/assets/music.mp3" loop preload="none" />
     </MusicCtx.Provider>
+  );
+}
+
+const REPEAT_LABEL: Record<RepeatMode, string> = {
+  all: "Repeat the list",
+  one: "Repeat this song",
+  off: "Repeat off",
+};
+
+function Transport() {
+  const music = useMusic();
+  const hasQueue = music.queue.length > 1;
+  const repeatIcon = music.repeat === "one" ? "repeat-one" : "repeat";
+  return (
+    <>
+      <button
+        className="player-open"
+        title="Previous"
+        aria-label="Previous"
+        disabled={!hasQueue}
+        onClick={music.previous}
+      >
+        <Icon name="prev" />
+      </button>
+      <button
+        className={`player-open${music.repeat !== "off" ? " on" : ""}`}
+        title={REPEAT_LABEL[music.repeat]}
+        aria-label={REPEAT_LABEL[music.repeat]}
+        onClick={music.cycleRepeat}
+      >
+        <Icon name={repeatIcon} />
+      </button>
+      <button
+        className="player-open"
+        title="Next"
+        aria-label="Next"
+        disabled={!hasQueue}
+        onClick={music.next}
+      >
+        <Icon name="next" />
+      </button>
+    </>
   );
 }
 
@@ -349,6 +591,11 @@ export function MusicMini() {
           <Icon name="music" />
         </button>
       </div>
+      {isYT && (
+        <div className="player-transport">
+          <Transport />
+        </div>
+      )}
       {open && <MusicModal onClose={() => setOpen(false)} />}
     </div>
   );
@@ -435,7 +682,7 @@ function MusicModal({ onClose }: { onClose: () => void }) {
       <div className={box}>
         <h4>{label}</h4>
         {videos.map((video) => (
-          <button key={video.id} className="recent" onClick={() => music.playVideo(video)}>
+          <button key={video.id} className="recent" onClick={() => music.playVideo(video, videos)}>
             <img src={video.thumb} alt="" />
             <span>
               <b>{video.title}</b>
@@ -466,7 +713,10 @@ function MusicModal({ onClose }: { onClose: () => void }) {
               <img className="music-now-thumb" src={music.video.thumb} alt="" />
               <div className="music-now-info">
                 <b>{music.video.title}</b>
-                <span>{music.video.author || "YouTube"} · plays in the sidebar</span>
+                <span>
+                  {music.video.author || "YouTube"}
+                  {music.queue.length > 1 ? ` · ${music.index + 1} of ${music.queue.length}` : ""}
+                </span>
               </div>
             </>
           ) : (
@@ -486,6 +736,9 @@ function MusicModal({ onClose }: { onClose: () => void }) {
               </div>
             </>
           )}
+          <div className="music-transport">
+            <Transport />
+          </div>
           {music.mode !== "off" && (
             <button className="player-btn" onClick={music.toggle} title="Play / pause" aria-label="Play / pause">
               <Icon name={music.playing ? "pause" : "play"} />
@@ -534,6 +787,24 @@ function MusicModal({ onClose }: { onClose: () => void }) {
             {trackList("Results", results, "recents music-results")}
             {!loading && searched && results.length === 0 && !error && (
               <p className="hint">Nothing found for that. Try different words, or paste a link.</p>
+            )}
+            {music.queue.length > 1 && (
+              <div className="recents music-queue">
+                <h4>Up next</h4>
+                {music.queue.map((video, index) => (
+                  <button
+                    key={`${video.id}-${index}`}
+                    className={`recent${index === music.index ? " on" : ""}`}
+                    onClick={() => music.jumpTo(index)}
+                  >
+                    <img src={video.thumb} alt="" />
+                    <span>
+                      <b>{video.title}</b>
+                      {video.author ? <em>{video.author}</em> : null}
+                    </span>
+                  </button>
+                ))}
+              </div>
             )}
             {trackList("Recent", music.recents)}
             {trackList("Popular in the garden", music.popular)}

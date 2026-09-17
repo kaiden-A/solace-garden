@@ -235,6 +235,10 @@ textarea:focus, input:focus { border-color: rgba(255, 184, 107, 0.55); box-shado
 .player-open { width: 26px; height: 26px; border-radius: 50%; border: 0; background: none; color: var(--muted); cursor: pointer; display: grid; place-items: center; flex-shrink: 0; }
 .player-open:hover { color: var(--text); background: rgba(255, 255, 255, 0.08); }
 .player-open .icon { width: 13px; height: 13px; }
+.player-open.on { color: var(--amber-soft); background: rgba(255, 184, 107, 0.14); }
+.player-open:disabled { opacity: 0.35; cursor: default; background: none; color: var(--muted); }
+.player-transport { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: -2px; }
+.player-transport .player-open { width: 30px; height: 30px; }
 .tabs { display: flex; gap: 6px; }
 .tabs button { flex: 1; padding: 9px 12px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--muted); cursor: pointer; font-size: 13px; }
 .tabs button.on { border-color: rgba(255, 184, 107, 0.6); color: var(--amber-soft); background: rgba(255, 184, 107, 0.12); }
@@ -260,14 +264,17 @@ textarea:focus, input:focus { border-color: rgba(255, 184, 107, 0.55); box-shado
 .yt-form .btn { flex-shrink: 0; }
 .recents { display: flex; flex-direction: column; gap: 8px; max-height: 236px; overflow-y: auto; }
 .music-results { max-height: 240px; }
+.music-queue { max-height: 190px; }
 .recents h4 { margin: 0; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
 .recent { display: flex; gap: 10px; align-items: center; background: none; border: 0; padding: 6px 8px; border-radius: 10px; cursor: pointer; text-align: left; color: var(--text); width: 100%; }
 .recent:hover { background: rgba(255, 255, 255, 0.06); }
+.recent.on { background: rgba(255, 184, 107, 0.14); }
 .recent img { width: 64px; height: 36px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
 .recent span { display: flex; flex-direction: column; min-width: 0; }
 .recent b { font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recent em { font-style: normal; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .music-controls { display: flex; align-items: center; gap: 12px; }
+.music-transport { display: flex; align-items: center; gap: 2px; }
 .volume { display: flex; align-items: center; gap: 10px; flex: 1; }
 .volume span { font-size: 12px; color: var(--muted); }
 .volume input[type="range"] { flex: 1; accent-color: var(--amber); }
@@ -739,6 +746,7 @@ blockquote { margin: 0; font-family: var(--font-display); font-size: 22px; line-
   .user-name { display: none; }
   .icon-btn { min-width: 44px; min-height: 44px; padding: 0; margin-left: 0; }
   .player { width: auto; padding: 5px; border-radius: 999px; flex-direction: row; }
+  .player-transport { display: none; }
   .player-btn { width: 40px; height: 40px; }
   .player-open { width: 40px; height: 40px; }
   .player-info { display: none; }
