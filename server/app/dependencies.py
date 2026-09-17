@@ -6,6 +6,7 @@ from .config import Settings, get_settings
 from .database import get_db
 from .models import User
 from .services import auth_services
+from .services.youtube import YouTubeClient
 from .services.zitadel import ZitadelClient
 
 
@@ -28,5 +29,13 @@ def get_zitadel(settings: Settings = Depends(get_settings)) -> ZitadelClient:
     return ZitadelClient(
         issuer=settings.zitadel_issuer.rstrip("/"),
         client_id=settings.zitadel_client_id,
+        http=httpx.Client(timeout=10.0),
+    )
+
+
+def get_youtube(settings: Settings = Depends(get_settings)) -> YouTubeClient:
+    return YouTubeClient(
+        api_key=settings.youtube_api_key,
+        search_daily_cap=settings.music_search_daily_cap,
         http=httpx.Client(timeout=10.0),
     )

@@ -24,6 +24,15 @@ def gift_payload(db: DbSession, token: str) -> GiftPayload | None:
             giveOn=to_ms(plant.for_whom_give_on),
         )
 
+    letters = [
+        LetterOut(note=event.note or "Tended it again", at=to_ms(event.at) or 0)
+        for event in plant.events
+        if event.type is EventType.tended
+    ]
+    # A gifted feeling carries the posts written into it.
+    letters += [LetterOut(note=post.body, at=to_ms(post.at) or 0) for post in plant.posts]
+    letters.sort(key=lambda letter: letter.at)
+
     return GiftPayload(
         title=plant.title,
         body=plant.body,
@@ -32,9 +41,5 @@ def gift_payload(db: DbSession, token: str) -> GiftPayload | None:
         note=gift.note,
         givenAt=to_ms(gift.given_at) or 0,
         forWhom=for_whom,
-        letters=[
-            LetterOut(note=event.note or "Tended it again", at=to_ms(event.at) or 0)
-            for event in plant.events
-            if event.type is EventType.tended
-        ],
+        letters=letters,
     )

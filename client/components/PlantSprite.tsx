@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import type { CSSProperties } from "react";
-import { artOf, metaOf } from "@/lib/species";
+import { plantHeadline } from "@/lib/plants";
+import { metaOf } from "@/lib/species";
 import type { PublicPlant } from "@/lib/types";
 import { Icon } from "./Icon";
+import { PlantArt } from "./PlantArt";
 
 export function PlantSprite({
   plant,
@@ -17,6 +19,7 @@ export function PlantSprite({
 }) {
   const [broken, setBroken] = useState(false);
   const meta = metaOf(plant);
+  const label = plantHeadline(plant, 60) || "A feeling";
   const style = {
     left: `${(plant.x * 100).toFixed(2)}%`,
     top: `${(plant.y * 100).toFixed(2)}%`,
@@ -31,8 +34,8 @@ export function PlantSprite({
     <button
       className={`plant stage-${plant.stage}`}
       style={style}
-      title={plant.title || "Untitled"}
-      aria-label={plant.title || "Untitled"}
+      title={label}
+      aria-label={label}
       onClick={onOpen}
     >
       {broken ? (
@@ -40,7 +43,7 @@ export function PlantSprite({
           <Icon name={meta.icon} />
         </span>
       ) : (
-        <img src={artOf(plant)} alt="" onError={() => setBroken(true)} />
+        <PlantArt plant={plant} onFail={() => setBroken(true)} />
       )}
     </button>
   );

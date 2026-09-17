@@ -51,11 +51,31 @@ function loadYT(): Promise<YTNamespace | null> {
 
 type Mode = "off" | "ambient" | "yt";
 
+async function fetchJson<T>(path: string): Promise<T | null> {
+  try {
+    const res = await fetch(path);
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
 interface MusicState {
   mode: Mode;
   playing: boolean;
   video: VideoInfo | null;
   volume: number;
+}
+
+interface SavedMusic {
+  video?: VideoInfo;
+  volume?: number;
+}
+
+interface RecentsResponse {
+  signedIn: boolean;
+  results: VideoInfo[];
 }
 
 interface MusicApi extends MusicState {
@@ -65,6 +85,8 @@ interface MusicApi extends MusicState {
   toggle: () => void;
   stop: () => void;
   setVolume: (volume: number) => void;
+  recents: VideoInfo[];
+  popular: VideoInfo[];
 }
 
 const MusicCtx = createContext<MusicApi | null>(null);
@@ -77,8 +99,11 @@ export function useMusic(): MusicApi {
 
 export function MusicProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<MusicState>({ mode: "off", playing: false, video: null, volume: 0.55 });
+  const [recents, setRecents] = useState<VideoInfo[]>([]);
+  const [popular, setPopular] = useState<VideoInfo[]>([]);
   const stateRef = useRef(state);
   stateRef.current = state;
+  const signedInRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const holderRef = useRef<HTMLDivElement | null>(null);
@@ -91,17 +116,44 @@ export function MusicProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    let saved: SavedMusic | null = null;
     try {
-      const saved = JSON.parse(localStorage.getItem("solace.music") ?? "null") as {
-        video?: VideoInfo;
-        volume?: number;
-      } | null;
-      if (saved?.video) {
-        setState((s) => ({ ...s, mode: "yt", video: saved.video ?? null, volume: saved.volume ?? s.volume }));
-      }
+      saved = JSON.parse(localStorage.getItem("solace.music") ?? "null") as SavedMusic | null;
     } catch {
       /* ignore */
     }
+    try {
+      setRecents(JSON.parse(localStorage.getItem("solace.recents") ?? "[]") as VideoInfo[]);
+    } catch {
+      /* ignore */
+    }
+    const savedVideo = saved?.video ?? null;
+    setState((s) => ({
+      ...s,
+      mode: savedVideo ? "yt" : s.mode,
+      video: savedVideo,
+      volume: saved?.volume ?? s.volume,
+    }));
+
+    let cancelled = false;
+    void (async () => {
+      const [mine, serverPopular] = await Promise.all([
+        fetchJson<RecentsResponse>("/api/music/recents"),
+        fetchJson<VideoInfo[]>("/api/music/popular"),
+      ]);
+      if (cancelled) return;
+      if (mine?.signedIn) {
+        signedInRef.current = true;
+        setRecents(mine.results);
+        if (!savedVideo && mine.results[0]) {
+          setState((s) => ({ ...s, mode: "yt", video: mine.results[0], playing: false }));
+        }
+      }
+      if (serverPopular) setPopular(serverPopular);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -172,10 +224,46 @@ export function MusicProvider({ children }: { children: ReactNode }) {
       .catch(() => toast("No ambience file yet — add public/assets/music.mp3"));
   }, []);
 
-  const playVideo = useCallback((video: VideoInfo) => {
-    audioRef.current?.pause();
-    setState((s) => ({ ...s, mode: "yt", video, playing: true }));
+  const rememberPlay = useCallback(async (video: VideoInfo) => {
+    if (signedInRef.current) {
+      try {
+        const res = await fetch("/api/music/plays", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            videoId: video.id,
+            title: video.title,
+            author: video.author,
+            thumb: video.thumb,
+          }),
+        });
+        if (res.ok) {
+          setRecents((await res.json()) as VideoInfo[]);
+          return;
+        }
+      } catch {
+        /* offline: fall back to this browser's list */
+      }
+    }
+    setRecents((prev) => {
+      const next = [video, ...prev.filter((item) => item.id !== video.id)].slice(0, 5);
+      try {
+        localStorage.setItem("solace.recents", JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
   }, []);
+
+  const playVideo = useCallback(
+    (video: VideoInfo) => {
+      audioRef.current?.pause();
+      setState((s) => ({ ...s, mode: "yt", video, playing: true }));
+      void rememberPlay(video);
+    },
+    [rememberPlay],
+  );
 
   const toggle = useCallback(() => {
     const current = stateRef.current;
@@ -212,7 +300,9 @@ export function MusicProvider({ children }: { children: ReactNode }) {
   useEffect(() => () => playerRef.current?.destroy(), []);
 
   return (
-    <MusicCtx.Provider value={{ ...state, attachHolder, playAmbient, playVideo, toggle, stop, setVolume }}>
+    <MusicCtx.Provider
+      value={{ ...state, recents, popular, attachHolder, playAmbient, playVideo, toggle, stop, setVolume }}
+    >
       {children}
       <audio ref={audioRef} src="/assets/music.mp3" loop preload="none" />
     </MusicCtx.Provider>
@@ -267,19 +357,12 @@ export function MusicMini() {
 function MusicModal({ onClose }: { onClose: () => void }) {
   const music = useMusic();
   const [tab, setTab] = useState<"ambient" | "yt">("ambient");
-  const [link, setLink] = useState("");
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<VideoInfo[]>([]);
+  const [searched, setSearched] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [recents, setRecents] = useState<VideoInfo[]>([]);
-  const pasteRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    try {
-      setRecents(JSON.parse(localStorage.getItem("solace.recents") ?? "[]") as VideoInfo[]);
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const searchRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -298,50 +381,70 @@ function MusicModal({ onClose }: { onClose: () => void }) {
   }, []);
 
   useEffect(() => {
-    if (tab === "yt") pasteRef.current?.focus();
+    if (tab === "yt") searchRef.current?.focus();
   }, [tab]);
-
-  const saveRecent = (video: VideoInfo) => {
-    const next = [video, ...recents.filter((item) => item.id !== video.id)].slice(0, 5);
-    setRecents(next);
-    try {
-      localStorage.setItem("solace.recents", JSON.stringify(next));
-    } catch {
-      /* ignore */
-    }
-  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    const id = parseYouTubeId(link);
-    if (!id) {
-      setError("That doesn't look like a YouTube link.");
-      return;
-    }
+    const value = query.trim();
+    if (!value) return;
+
     setError("");
     setLoading(true);
-    let video: VideoInfo = {
-      id,
-      title: "YouTube video",
-      author: "",
-      thumb: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
-    };
+
+    const id = parseYouTubeId(value);
     try {
-      const res = await fetch(`/api/music/oembed?url=${encodeURIComponent(watchUrl(id))}`);
-      if (res.ok) {
-        const data = (await res.json()) as { title: string; author: string; thumbnail: string };
-        video = { id, title: data.title, author: data.author, thumb: data.thumbnail };
+      if (id) {
+        let video: VideoInfo = {
+          id,
+          title: "YouTube video",
+          author: "",
+          thumb: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
+        };
+        const res = await fetch(`/api/music/resolve?url=${encodeURIComponent(watchUrl(id))}`);
+        if (res.ok) video = (await res.json()) as VideoInfo;
+        music.playVideo(video);
+        setQuery("");
+        return;
       }
+
+      const res = await fetch(`/api/music/search?q=${encodeURIComponent(value)}`);
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        setError(data?.error ?? "Could not search right now.");
+        setResults([]);
+        return;
+      }
+      const data = (await res.json()) as { results: VideoInfo[]; stale?: boolean };
+      setResults(data.results);
+      setSearched(true);
+      if (data.stale) setError("Showing saved results — search is resting for today.");
     } catch {
-      /* keep fallback info */
+      setError("Could not reach the music service.");
+      setResults([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-    music.playVideo(video);
-    saveRecent(video);
-    setLink("");
   };
 
   const isYT = music.mode === "yt" && Boolean(music.video);
+  const looksLikeLink = Boolean(parseYouTubeId(query));
+
+  const trackList = (label: string, videos: VideoInfo[], box = "recents") =>
+    videos.length > 0 && (
+      <div className={box}>
+        <h4>{label}</h4>
+        {videos.map((video) => (
+          <button key={video.id} className="recent" onClick={() => music.playVideo(video)}>
+            <img src={video.thumb} alt="" />
+            <span>
+              <b>{video.title}</b>
+              {video.author ? <em>{video.author}</em> : null}
+            </span>
+          </button>
+        ))}
+      </div>
+    );
 
   return createPortal(
     <div
@@ -413,42 +516,27 @@ function MusicModal({ onClose }: { onClose: () => void }) {
           <div className="yt-pane">
             <form className="yt-form" onSubmit={submit}>
               <input
-                ref={pasteRef}
-                value={link}
-                onChange={(event) => setLink(event.target.value)}
-                placeholder="Paste a YouTube link"
-                inputMode="url"
+                ref={searchRef}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search YouTube or paste a link"
+                inputMode="search"
                 autoComplete="off"
                 autoCapitalize="none"
                 autoCorrect="off"
-                enterKeyHint="go"
+                enterKeyHint="search"
               />
-              <button className="btn btn-primary" disabled={loading}>
-                {loading ? "…" : "Play"}
+              <button className="btn btn-primary" disabled={loading || !query.trim()}>
+                {loading ? "…" : looksLikeLink ? "Play" : "Search"}
               </button>
             </form>
             {error && <p className="music-error">{error}</p>}
-            {recents.length > 0 && (
-              <div className="recents">
-                <h4>Recent</h4>
-                {recents.map((video) => (
-                  <button
-                    key={video.id}
-                    className="recent"
-                    onClick={() => {
-                      music.playVideo(video);
-                      saveRecent(video);
-                    }}
-                  >
-                    <img src={video.thumb} alt="" />
-                    <span>
-                      <b>{video.title}</b>
-                      {video.author ? <em>{video.author}</em> : null}
-                    </span>
-                  </button>
-                ))}
-              </div>
+            {trackList("Results", results, "recents music-results")}
+            {!loading && searched && results.length === 0 && !error && (
+              <p className="hint">Nothing found for that. Try different words, or paste a link.</p>
             )}
+            {trackList("Recent", music.recents)}
+            {trackList("Popular in the garden", music.popular)}
           </div>
         )}
 

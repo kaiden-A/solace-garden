@@ -112,7 +112,7 @@ export default function GrowPage() {
           </button>
         </form>
         <p className="hint center">
-          Just for yourself? <Link href="/plant">Plant something →</Link>
+          Just for yourself? <Link href="/plant">Water a plant →</Link>
         </p>
       </div>
       <div className="art form-art sample on-scene">

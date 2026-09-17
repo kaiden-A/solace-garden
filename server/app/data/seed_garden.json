@@ -1,92 +1,140 @@
 [
   {
     "category": "gratitude",
-    "title": "Morning light on the kitchen floor",
-    "body": "Thank you for the small things: the quiet mornings, the second cup of coffee, the way the light lands on the floor like it has nowhere else to be.",
+    "posts": [
+      "Thank you for the small things: the quiet mornings, the second cup of coffee, the way the light lands on the floor like it has nowhere else to be.",
+      "I noticed it again today and just stood there for a while.",
+      "Left the window open on purpose.",
+      "Still thinking about it. Good night."
+    ],
     "offsets": [12, 8, 3, 1]
   },
   {
     "category": "gratitude",
-    "title": "For the friend who stayed",
-    "body": "I'm grateful that you stayed, when I didn't know how to ask someone to stay.",
+    "posts": [
+      "I'm grateful that you stayed, when I didn't know how to ask someone to stay.",
+      "Told you a little of this today. You didn't make it weird.",
+      "You texted first. Small thing. Big thing.",
+      "I keep meaning to say it properly.",
+      "So here it is, plainly: thank you."
+    ],
     "offsets": [9, 6, 4, 2, 0.5]
   },
   {
     "category": "gratitude",
-    "title": "A small win",
-    "body": "I did the hard thing today. I want to remember that I can.",
+    "posts": ["I did the hard thing today. I want to remember that I can."],
     "offsets": [2]
   },
   {
     "category": "gratitude",
-    "title": "Rain on the roof",
-    "body": "Nothing to do, nowhere to be. Just the sound above me and a warm cup in my hands.",
+    "posts": [
+      "Nothing to do, nowhere to be. Just the sound above me and a warm cup in my hands.",
+      "Turned the lamp off and just listened.",
+      "It's still raining. I'm not moving.",
+      "Best hour of the week.",
+      "Falling asleep to it."
+    ],
     "offsets": [5, 3, 1, 0.4, 0.1]
   },
   {
     "category": "memory",
-    "title": "The house on Cedar Street",
-    "body": "I can still hear the screen door. I can still smell the rain on the porch.",
+    "posts": [
+      "I can still hear the screen door. I can still smell the rain on the porch.",
+      "I looked up the street on a map today. The tree is still there."
+    ],
     "offsets": [30, 28]
   },
   {
     "category": "memory",
-    "title": "First snowfall",
-    "body": "We didn't have gloves, so we used socks. It was the best day.",
+    "posts": [
+      "We didn't have gloves, so we used socks. It was the best day.",
+      "I remembered the socks this time and laughed on the bus.",
+      "Wish I had a photo. The memory is enough, I think."
+    ],
     "offsets": [6, 4, 2]
   },
   {
     "category": "memory",
-    "title": "Her laugh in the kitchen",
-    "body": "You laughed until you cried, and the whole house felt lighter.",
+    "posts": [
+      "You laughed until you cried, and the whole house felt lighter.",
+      "I tried to laugh like that today. Nearly got there.",
+      "Someone at work has your laugh. It stops me every time.",
+      "Told the story to a friend. She laughed too.",
+      "Still the best sound."
+    ],
     "offsets": [8, 5, 3, 1, 0.2]
   },
   {
     "category": "memory",
-    "title": "Grandpa's workshop",
-    "body": "Sawdust, coffee, and the radio always on. He let me hold the sandpaper like it was important.",
+    "posts": [
+      "Sawdust, coffee, and the radio always on. He let me hold the sandpaper like it was important.",
+      "Found that smell in an old shop today and stood in the doorway.",
+      "I bought sandpaper for no reason.",
+      "I think he'd like that I still notice these things."
+    ],
     "offsets": [11, 9, 7, 5]
   },
   {
     "category": "hope",
-    "title": "Starting the new job",
-    "body": "I'm nervous. But I think I'm ready.",
+    "posts": ["I'm nervous. But I think I'm ready.", "First day done. I was ready."],
     "offsets": [4, 2]
   },
   {
     "category": "hope",
-    "title": "Someday, a cabin by the water",
-    "body": "Small rooms, big windows, a boat that leaks a little. One day.",
+    "posts": [
+      "Small rooms, big windows, a boat that leaks a little. One day.",
+      "Started a folder of cabins today, for no reason at all.",
+      "Looked at boats I can't afford yet.",
+      "I can almost smell the water.",
+      "One day. Keeping it."
+    ],
     "offsets": [10, 7, 5, 3, 1]
   },
   {
     "category": "feeling",
-    "title": "A Letter to My Future Self",
-    "body": "I hope you're proud of yourself, even on the days you feel like you're not enough.",
+    "posts": [
+      "I hope you're proud of yourself, even on the days you feel like you're not enough.",
+      "Reading this back and I want to believe it.",
+      "I think you'd be proud. I'm trying to be."
+    ],
     "offsets": [4, 2.2, 0.6]
   },
   {
     "category": "feeling",
-    "title": "To my younger self",
-    "body": "It gets better. Not all at once, but it does. You'll want to stay.",
+    "posts": [
+      "It gets better. Not all at once, but it does. You'll want to stay.",
+      "You made it through the week. I noticed.",
+      "You still flinch at the same things, but you stay now.",
+      "I'm proud of you. I mean it."
+    ],
     "offsets": [15, 12, 10, 8]
   },
   {
     "category": "feeling",
-    "title": "A letter I'm not sure I'll send",
-    "body": "There's so much I want to say, and I'm almost brave enough to say it.",
+    "posts": [
+      "There's so much I want to say, and I'm almost brave enough to say it.",
+      "Almost pressed send. Not tonight."
+    ],
     "offsets": [3, 1]
   },
   {
     "category": "feeling",
-    "title": "To the version of me that's scared",
-    "body": "You don't have to be brave today. You just have to stay.",
+    "posts": [
+      "You don't have to be brave today. You just have to stay.",
+      "Made tea instead of panicking. Progress.",
+      "It's okay to just be here.",
+      "Tomorrow can wait."
+    ],
     "offsets": [2.5, 1.2, 0.3, 0.05]
   },
   {
     "category": "anger",
-    "title": "The thing I never said",
-    "body": "I was so angry that day. I'm writing it here so I don't have to carry it anymore.",
+    "posts": [
+      "I was so angry that day. I'm writing it here so I don't have to carry it anymore.",
+      "Wrote it again, softer this time.",
+      "I don't want to be right. I want to be okay.",
+      "Almost ready to let this one go."
+    ],
     "offsets": [11, 9, 6, 3]
   },
   {

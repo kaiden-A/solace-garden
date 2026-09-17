@@ -12,6 +12,7 @@ from .users import utcnow
 if TYPE_CHECKING:
     from .gifts import Gift
     from .plant_events import PlantEvent
+    from .posts import PlantPost
 
 
 class Plant(Base):
@@ -56,6 +57,12 @@ class Plant(Base):
         order_by="PlantEvent.at",
         lazy="selectin",
     )
+    posts: Mapped[list["PlantPost"]] = relationship(
+        back_populates="plant",
+        cascade="all, delete-orphan",
+        order_by="PlantPost.at",
+        lazy="selectin",
+    )
     gift: Mapped["Gift | None"] = relationship(
         back_populates="plant", cascade="all, delete-orphan", uselist=False, lazy="selectin"
     )
@@ -63,6 +70,11 @@ class Plant(Base):
     @property
     def has_recipient(self) -> bool:
         return bool(self.for_whom_name)
+
+    @property
+    def is_letter(self) -> bool:
+        """Letters keep the title + body + tend-notes model; feelings use posts."""
+        return self.for_whom_name is not None
 
     def placement_key(self) -> str:
         if self.has_recipient:

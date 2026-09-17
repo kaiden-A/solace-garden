@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api-client";
 import { fineFocus } from "@/lib/focus";
+import { flowerArtOf } from "@/lib/species";
 import { toast } from "@/lib/toast";
 import { Icon } from "./Icon";
 import { makeDotTexture, makeRadialTexture, makeStreakTexture, makeTouchScrollable, pixiResolution, scaledCount } from "./pixi-utils";
@@ -73,7 +74,7 @@ export default function ReleaseScene() {
         const loaded = await PIXI.Assets.load([
           "/assets/bg-rain.jpg",
           "/assets/bg-dusk.jpg",
-          "/assets/plants/anger.png",
+          flowerArtOf("rose"),
         ]);
         if (disposed) return;
 
@@ -97,7 +98,7 @@ export default function ReleaseScene() {
         glow.zIndex = 99;
         app.stage.addChild(glow);
 
-        const plant = new PIXI.Sprite(loaded["/assets/plants/anger.png"]);
+        const plant = new PIXI.Sprite(loaded[flowerArtOf("rose")]);
         plant.anchor.set(0.5, 1);
         plant.zIndex = 100;
         app.stage.addChild(plant);

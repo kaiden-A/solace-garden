@@ -28,6 +28,16 @@ class Settings(BaseSettings):
     guest_ttl_days: int = 14
     cookie_secure: bool = False
 
+    # YouTube Data API v3 key (server-side only, never sent to the browser).
+    # Empty disables search; pasted links keep working through oEmbed.
+    youtube_api_key: str = ""
+    # search.list has its own small daily bucket, so cached queries live long.
+    music_search_ttl_days: int = 7
+    # YouTube's terms cap cached API data at 30 days.
+    music_track_ttl_days: int = 30
+    # Soft, process-local ceiling below the project's daily search bucket.
+    music_search_daily_cap: int = 90
+
     cors_origins: str = ""
 
     @property

@@ -11,11 +11,12 @@ from sqlalchemy.orm import sessionmaker
 from app import models  # noqa: F401  (register models on Base.metadata)
 from app.config import get_settings
 from app.database import Base, get_db
-from app.dependencies import get_zitadel
+from app.dependencies import get_youtube, get_zitadel
 from app.main import app
 from app.models import User
 from app.models.enums import UserKind
 from app.services.auth_services import create_session
+from app.services.youtube import YouTubeQuotaError, YouTubeTrack
 
 settings = get_settings()
 SCHEMA = f"solace_test_{uuid.uuid4().hex[:8]}"
@@ -150,4 +151,46 @@ def fake_idp() -> FakeZitadel:
 @pytest.fixture
 def idp_client(client: TestClient, fake_idp: FakeZitadel) -> TestClient:
     app.dependency_overrides[get_zitadel] = lambda: fake_idp
+    return client
+
+
+class FakeYouTube:
+    """Serves canned search results and records every call that would cost quota."""
+
+    def __init__(self) -> None:
+        self.configured = True
+        self.quota = False
+        self.results: dict[str, list[YouTubeTrack]] = {}
+        self.oembed_tracks: dict[str, YouTubeTrack] = {}
+        self.search_calls: list[str] = []
+        self.oembed_calls: list[str] = []
+
+    @staticmethod
+    def track(video_id: str, title: str = "A song", author: str = "A channel") -> YouTubeTrack:
+        return YouTubeTrack(
+            video_id=video_id,
+            title=title,
+            author=author,
+            thumb=f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg",
+        )
+
+    def search(self, query: str, *, limit: int = 10) -> list[YouTubeTrack]:
+        self.search_calls.append(query)
+        if self.quota:
+            raise YouTubeQuotaError("test quota spent")
+        return list(self.results.get(query, []))[:limit]
+
+    def oembed(self, video_id: str) -> YouTubeTrack | None:
+        self.oembed_calls.append(video_id)
+        return self.oembed_tracks.get(video_id)
+
+
+@pytest.fixture
+def fake_youtube() -> FakeYouTube:
+    return FakeYouTube()
+
+
+@pytest.fixture
+def music_client(client: TestClient, fake_youtube: FakeYouTube) -> TestClient:
+    app.dependency_overrides[get_youtube] = lambda: fake_youtube
     return client

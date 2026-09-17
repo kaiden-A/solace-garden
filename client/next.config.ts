@@ -1,8 +1,7 @@
 import type { NextConfig } from "next";
 
 // Where the FastAPI server lives. Same origin as far as the browser is
-// concerned: everything under /api (except the YouTube oEmbed proxy, which
-// stays local) is proxied here.
+// concerned: everything under /api is proxied here.
 const API_ORIGIN = process.env.API_ORIGIN ?? "http://localhost:8000";
 
 const nextConfig: NextConfig = {
@@ -13,8 +12,8 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     return {
-      // afterFiles: real route handlers win, so app/api/music/oembed keeps
-      // working locally while the rest of /api goes to FastAPI.
+      // afterFiles: a real route handler under app/api/* would win, the rest
+      // of /api goes to FastAPI.
       afterFiles: [
         {
           source: "/api/:path*",

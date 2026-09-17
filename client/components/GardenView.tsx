@@ -5,12 +5,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { CATEGORIES, STAGE_LABEL } from "@/lib/categories";
+import { plantHaystack, plantHeadline, postCount } from "@/lib/plants";
 import { SECTIONS } from "@/lib/sections";
-import { artOf } from "@/lib/species";
+import { toast } from "@/lib/toast";
 import type { Category, PublicPlant } from "@/lib/types";
 import { Fireflies } from "./Fireflies";
 import { Icon } from "./Icon";
+import { PlantArt } from "./PlantArt";
 import { PlantSprite } from "./PlantSprite";
+import { ShareGarden } from "./ShareGarden";
 import { WelcomeModal } from "./WelcomeModal";
 
 const GardenCanvas = dynamic(() => import("./GardenCanvas"), { ssr: false });
@@ -30,7 +33,7 @@ const VIEWS: Record<
   seeds: {
     title: "Seeds",
     sub: "A thought that just began — nothing owed yet.",
-    empty: "No seeds yet. Plant something and watch it begin.",
+    empty: "No seeds yet. Water a plant and watch it begin.",
     keep: (plant) => plant.stage === "seed" || plant.stage === "sprout",
   },
 };
@@ -43,6 +46,9 @@ export function GardenView({ mode }: { mode: Mode }) {
   const [failed, setFailed] = useState(false);
   const [canvasFailed, setCanvasFailed] = useState(false);
   const [focused, setFocused] = useState<string | null>(null);
+  const [capture, setCapture] = useState<(() => Promise<Blob | null>) | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [shared, setShared] = useState<{ url: string; file: File } | null>(null);
 
   useEffect(() => {
     fetch("/api/plants")
@@ -65,7 +71,7 @@ export function GardenView({ mode }: { mode: Mode }) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return visible;
-    return visible.filter((plant) => `${plant.title} ${plant.body}`.toLowerCase().includes(q));
+    return visible.filter((plant) => plantHaystack(plant).includes(q));
   }, [visible, query]);
 
   const counts = useMemo(() => {
@@ -84,6 +90,26 @@ export function GardenView({ mode }: { mode: Mode }) {
 
   const openPlant = (id: string) => router.push(`/plants/${id}`);
 
+  const shareGarden = async () => {
+    if (!capture || sharing) return;
+    setSharing(true);
+    const blob = await capture();
+    setSharing(false);
+    if (!blob) {
+      toast("Couldn't take a picture just now.");
+      return;
+    }
+    setShared({
+      url: URL.createObjectURL(blob),
+      file: new File([blob], "solace-garden.png", { type: "image/png" }),
+    });
+  };
+
+  const closeShare = () => {
+    if (shared) URL.revokeObjectURL(shared.url);
+    setShared(null);
+  };
+
   return (
     <>
       <div className="topbar">
@@ -101,8 +127,13 @@ export function GardenView({ mode }: { mode: Mode }) {
             enterKeyHint="search"
             autoComplete="off"
           />
+          {!canvasFailed && (
+            <button className="btn btn-ghost" onClick={shareGarden} disabled={!capture || sharing}>
+              <Icon name="share" /> {sharing ? "…" : "Share"}
+            </button>
+          )}
           <Link className="btn btn-primary" href="/plant">
-            <Icon name="plus" /> Plant
+            <Icon name="droplet" /> Water a plant
           </Link>
         </div>
       </div>
@@ -128,6 +159,7 @@ export function GardenView({ mode }: { mode: Mode }) {
             onSelect={openPlant}
             onFocus={setFocused}
             onFail={() => setCanvasFailed(true)}
+            onCaptureReady={(fn) => setCapture(() => fn)}
           />
         )}
 
@@ -166,10 +198,15 @@ export function GardenView({ mode }: { mode: Mode }) {
                 {focusedPlants.map((plant) => (
                   <li key={plant.id}>
                     <button onClick={() => openPlant(plant.id)}>
-                      <img src={artOf(plant)} alt="" loading="lazy" decoding="async" />
+                      <PlantArt plant={plant} alt="" loading="lazy" decoding="async" />
                       <span>
-                        <b>{plant.title || "Untitled"}</b>
-                        <em>{STAGE_LABEL[plant.stage]}</em>
+                        <b>{plantHeadline(plant, 46) || "A feeling"}</b>
+                        <em>
+                          {STAGE_LABEL[plant.stage]}
+                          {plant.forWhom
+                            ? ""
+                            : ` · ${postCount(plant)} ${postCount(plant) === 1 ? "post" : "posts"}`}
+                        </em>
                       </span>
                     </button>
                   </li>
@@ -185,7 +222,7 @@ export function GardenView({ mode }: { mode: Mode }) {
           <div className="empty-state">
             <p>{view.empty}</p>
             <Link className="btn btn-primary" href="/plant">
-              <Icon name="sprout" /> Plant something
+              <Icon name="droplet" /> Water a plant
             </Link>
           </div>
         )}
@@ -202,6 +239,7 @@ export function GardenView({ mode }: { mode: Mode }) {
       </div>
 
       {mode === "garden" && <WelcomeModal />}
+      {shared && <ShareGarden image={shared} onClose={closeShare} />}
     </>
   );
 }

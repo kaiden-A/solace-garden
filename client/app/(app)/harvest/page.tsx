@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { Icon } from "@/components/Icon";
+import { PlantArt } from "@/components/PlantArt";
 import { apiFetch } from "@/lib/api-client";
 import { STAGE_LABEL } from "@/lib/categories";
 import { fineFocus } from "@/lib/focus";
 import { mailtoFor } from "@/lib/mailto";
-import { artOf, SPECIES, speciesOf } from "@/lib/species";
+import { SPECIES, speciesOf } from "@/lib/species";
 import { toast } from "@/lib/toast";
 import type { PublicPlant } from "@/lib/types";
 
@@ -107,7 +108,7 @@ export default function HarvestPage() {
               {isHarvesting && <span className="harvest-burst" aria-hidden="true" />}
               <div className="arch">
                 <div className="art harvest-art stage-fruit" style={{ "--glow": meta.glow } as CSSProperties}>
-                  <img src={artOf(plant)} alt="" loading="lazy" decoding="async" />
+                  <PlantArt plant={plant} alt="" loading="lazy" decoding="async" />
                 </div>
               </div>
               <span className="chip chip-for">

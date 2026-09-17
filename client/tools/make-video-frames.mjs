@@ -8,12 +8,12 @@ const SRC = path.join(ROOT, "public", "assets", "plants");
 const OUT = path.join(ROOT, "public", "video-frames");
 
 const SPECIES = [
-  { id: "peony", file: "gratitude.png" },
-  { id: "forget-me-not", file: "memory.png" },
-  { id: "cherry", file: "hope.png" },
-  { id: "rose", file: "anger.png" },
-  { id: "foxglove", file: "letter.png" },
-  { id: "wisteria", file: "feeling.png" },
+  { id: "peony", file: "gratitude-flower.png" },
+  { id: "forget-me-not", file: "memory-flower.png" },
+  { id: "cherry", file: "hope-flower.png" },
+  { id: "rose", file: "anger-flower.png" },
+  { id: "foxglove", file: "letter-flower.png" },
+  { id: "wisteria", file: "feeling-flower.png" },
 ];
 
 const WIDTH = 1920;

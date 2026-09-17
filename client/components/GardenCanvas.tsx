@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { artOf, artOfSpecies, metaOf, SPECIES_KEYS } from "@/lib/species";
+import { artOf, artOfSpecies, artStages, flowerArtOf, metaOf, speciesOf, SPECIES_KEYS } from "@/lib/species";
 import { SECTIONS } from "@/lib/sections";
 import type { PublicPlant } from "@/lib/types";
 import { isCoarsePointer, makeDotTexture, makeRadialTexture, makeTouchScrollable, pixiResolution, scaledCount } from "./pixi-utils";
@@ -12,6 +12,8 @@ interface GardenCanvasProps {
   onSelect: (id: string) => void;
   onFocus: (category: string | null) => void;
   onFail: () => void;
+  /** Handed a function that renders the garden to a PNG, or null on teardown. */
+  onCaptureReady?: (capture: (() => Promise<Blob | null>) | null) => void;
 }
 
 interface Entry {
@@ -23,6 +25,17 @@ interface Entry {
   hovered: boolean;
   pressed: boolean;
   hitArea: any;
+  /** Plays the one-off bloom for a plant that just appeared. */
+  burst: boolean;
+}
+
+interface Burst {
+  x: number;
+  y: number;
+  life: number;
+  ttl: number;
+  ring: any;
+  sparkles: any[];
 }
 
 interface Particle {
@@ -35,13 +48,14 @@ interface Particle {
   by?: number;
 }
 
-const STAGE_WIDTH: Record<string, number> = { seed: 18, sprout: 38, flower: 108, fruit: 124, withered: 84 };
+// One render width per stage: the art itself carries how big a seed or a bloom is.
+const STAGE_WIDTH: Record<string, number> = { seed: 144, sprout: 124, flower: 108, fruit: 120, withered: 84 };
 
-export default function GardenCanvas({ plants, focused, onSelect, onFocus, onFail }: GardenCanvasProps) {
+export default function GardenCanvas({ plants, focused, onSelect, onFocus, onFail, onCaptureReady }: GardenCanvasProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const syncRef = useRef<((list: PublicPlant[], focused: string | null) => void) | null>(null);
-  const propsRef = useRef({ onSelect, onFocus, onFail });
-  propsRef.current = { onSelect, onFocus, onFail };
+  const propsRef = useRef({ onSelect, onFocus, onFail, onCaptureReady });
+  propsRef.current = { onSelect, onFocus, onFail, onCaptureReady };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -75,9 +89,29 @@ export default function GardenCanvas({ plants, focused, onSelect, onFocus, onFai
         const loaded = await PIXI.Assets.load([
           "/assets/garden.jpg",
           "/assets/garden-wind.png",
-          ...SPECIES_KEYS.map(artOfSpecies),
+          ...SPECIES_KEYS.map((key) => flowerArtOf(key)),
         ]);
         if (disposed) return;
+
+        // Stage art (seed / sprout) is optional: a missing file just keeps the bloom.
+        const stageTextures: Record<string, any> = {};
+        await Promise.all(
+          SPECIES_KEYS.flatMap((key) =>
+            artStages
+              .filter((stage) => stage !== "flower")
+              .map(async (stage) => {
+                const url = artOfSpecies(key, stage);
+                try {
+                  stageTextures[url] = await PIXI.Assets.load(url);
+                } catch {
+                  /* keep the bloom for this stage */
+                }
+              }),
+          ),
+        );
+
+        const textureFor = (plant: PublicPlant) =>
+          stageTextures[artOf(plant)] ?? loaded[flowerArtOf(speciesOf(plant))];
 
         const scene = new PIXI.Sprite(loaded["/assets/garden.jpg"]);
         scene.anchor.set(0.5);
@@ -155,7 +189,7 @@ export default function GardenCanvas({ plants, focused, onSelect, onFocus, onFai
             seen.add(plant.id);
             let entry = entries.get(plant.id);
             if (!entry) {
-              const sprite = new PIXI.Sprite(loaded[artOf(plant)]);
+              const sprite = new PIXI.Sprite(textureFor(plant));
               sprite.anchor.set(0.5, 1);
               sprite.eventMode = "static";
               sprite.cursor = "pointer";
@@ -194,6 +228,7 @@ export default function GardenCanvas({ plants, focused, onSelect, onFocus, onFai
                 hovered: false,
                 pressed: false,
                 hitArea,
+                burst: Date.now() - plant.createdAt < 3 * 60 * 1000,
               };
               entries.set(plant.id, entry);
             }
@@ -231,6 +266,8 @@ export default function GardenCanvas({ plants, focused, onSelect, onFocus, onFai
         const fireflies: Particle[] = [];
         const pollen: Particle[] = [];
         const petals: Particle[] = [];
+        const bursts: Burst[] = [];
+        const sparkTexture = makeDot(0xffe9b0, 2.2);
         if (!reduced) {
           const fireflyTexture = makeDot(0xffe9b0, 2.4);
           const pollenTexture = makeDot(0xfff2cf, 1.3);
@@ -259,6 +296,32 @@ export default function GardenCanvas({ plants, focused, onSelect, onFocus, onFai
         let lastWidth = app.screen.width;
         let lastHeight = app.screen.height;
 
+        const capture = async (): Promise<Blob | null> => {
+          try {
+            // Bake a finished frame: no fade-in, no hover lift, no dimming.
+            app.stage.alpha = 1;
+            for (const entry of entries.values()) {
+              entry.alive = 1;
+              entry.hovered = false;
+              entry.pressed = false;
+            }
+            const canvas = app.renderer.extract.canvas({
+              target: app.stage,
+              frame: new PIXI.Rectangle(0, 0, app.screen.width, app.screen.height),
+              resolution: 2,
+              antialias: true,
+              clearColor: 0x131120,
+            }) as HTMLCanvasElement;
+            return await new Promise<Blob | null>((resolve) =>
+              canvas.toBlob((blob) => resolve(blob), "image/png"),
+            );
+          } catch (error) {
+            console.error("garden capture failed", error);
+            return null;
+          }
+        };
+        propsRef.current.onCaptureReady?.(capture);
+
         app.ticker.add((ticker: any) => {
           const dt = Math.min(0.05, ticker.deltaMS / 1000);
           elapsed += dt;
@@ -286,6 +349,14 @@ export default function GardenCanvas({ plants, focused, onSelect, onFocus, onFai
 
           for (const entry of entries.values()) {
             const { sprite, glow, plant } = entry;
+
+            // The art changes with the stage, so swap the texture when it grows.
+            const wanted = textureFor(plant);
+            if (wanted && sprite.texture !== wanted) {
+              sprite.texture = wanted;
+              entry.alive = Math.min(entry.alive, 0.45);
+            }
+
             entry.alive = Math.min(1, entry.alive + dt / 0.7);
             const ease = 1 - Math.pow(1 - entry.alive, 3);
             const base = (STAGE_WIDTH[plant.stage] ?? 108) * (plant.scale ?? 1);
@@ -317,6 +388,53 @@ export default function GardenCanvas({ plants, focused, onSelect, onFocus, onFai
             glow.scale.set(scale);
             glow.alpha = ease * dim * (active ? 0.34 : 0.22);
             glow.zIndex = sprite.zIndex - 1;
+
+            if (entry.burst) {
+              entry.burst = false;
+              if (!reduced) {
+                const ring = new PIXI.Sprite(glowTexture);
+                ring.anchor.set(0.5);
+                ring.blendMode = "add";
+                ring.tint = parseInt(metaOf(plant).glow.slice(1), 16);
+                ring.position.set(x, y);
+                ring.zIndex = sprite.zIndex + 1;
+                app.stage.addChild(ring);
+                const sparkles = [];
+                for (let i = 0; i < 9; i++) {
+                  const spark = new PIXI.Sprite(sparkTexture);
+                  spark.anchor.set(0.5);
+                  spark.blendMode = "add";
+                  spark.position.set(x, y);
+                  spark.zIndex = sprite.zIndex + 2;
+                  app.stage.addChild(spark);
+                  sparkles.push(spark);
+                }
+                bursts.push({ x, y, life: 0, ttl: 1.7, ring, sparkles });
+              }
+            }
+          }
+
+          for (let i = bursts.length - 1; i >= 0; i--) {
+            const burst = bursts[i];
+            burst.life += dt;
+            const t = burst.life / burst.ttl;
+            if (t >= 1) {
+              burst.ring.destroy();
+              for (const spark of burst.sparkles) spark.destroy();
+              bursts.splice(i, 1);
+              continue;
+            }
+            burst.ring.scale.set(0.4 + t * 2.4);
+            burst.ring.alpha = 0.65 * (1 - t) * (1 - t) + 0.12 * (1 - t);
+            burst.sparkles.forEach((spark, index) => {
+              const angle = (index / burst.sparkles.length) * Math.PI * 2 + burst.x * 0.01;
+              const distance = 8 + t * 54;
+              spark.position.set(
+                burst.x + Math.cos(angle) * distance,
+                burst.y + Math.sin(angle) * distance * 0.65 - t * 20,
+              );
+              spark.alpha = 0.9 * (1 - t);
+            });
           }
 
           for (const fly of fireflies) {
@@ -392,6 +510,7 @@ export default function GardenCanvas({ plants, focused, onSelect, onFocus, onFai
     return () => {
       disposed = true;
       syncRef.current = null;
+      propsRef.current.onCaptureReady?.(null);
       try {
         cleanup?.();
         app?.destroy(true, { children: true, texture: false });

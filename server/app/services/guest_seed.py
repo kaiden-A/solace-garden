@@ -5,7 +5,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session as DbSession
 
-from ..models import Plant, PlantEvent, User
+from ..models import Plant, PlantEvent, PlantPost, User
 from ..models.enums import Category, EventType, PlantStatus, Species
 from .plants_services import PLACEMENTS
 
@@ -39,8 +39,8 @@ def clone_seed_garden(db: DbSession, owner: User) -> list[Plant]:
         give_on_days = entry.get("giveOnDays")
         plant = Plant(
             owner_id=owner.id,
-            title=entry["title"],
-            body=entry["body"],
+            title=entry.get("title") or "",
+            body=entry.get("body") or "",
             category=Category(category) if category else None,
             species=Species(entry["species"]) if entry.get("species") else None,
             status=PlantStatus.growing,
@@ -53,18 +53,26 @@ def clone_seed_garden(db: DbSession, owner: User) -> list[Plant]:
             for_whom_email=(recipient or {}).get("email") or None,
             for_whom_give_on=(now + give_on_days * DAY) if give_on_days is not None else None,
         )
-        plant.events = [
-            PlantEvent(
-                type=EventType.planted if i == 0 else EventType.tended,
-                note=(
-                    "Planted the seed"
-                    if i == 0
-                    else ("Added a little more" if i % 2 else "Tended it again")
-                ),
-                at=now - days * DAY,
-            )
-            for i, days in enumerate(offsets)
-        ]
+        if recipient:
+            plant.events = [
+                PlantEvent(
+                    type=EventType.planted if i == 0 else EventType.tended,
+                    note=(
+                        "Planted the seed"
+                        if i == 0
+                        else ("Added a little more" if i % 2 else "Tended it again")
+                    ),
+                    at=now - days * DAY,
+                )
+                for i, days in enumerate(offsets)
+            ]
+        else:
+            # A feeling grows by its posts, so the demo seed is a real thread.
+            posts: list[str] = entry["posts"]
+            plant.posts = [
+                PlantPost(body=text, at=now - days * DAY)
+                for text, days in zip(posts, offsets, strict=True)
+            ]
         db.add(plant)
         plants.append(plant)
 

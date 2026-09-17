@@ -9,6 +9,11 @@ export interface PlantEvent {
   at: number;
 }
 
+export interface PlantPost {
+  body: string;
+  at: number;
+}
+
 export interface Gift {
   to: string;
   note: string;
@@ -36,6 +41,7 @@ export interface Plant {
   seed: number;
   createdAt: number;
   events: PlantEvent[];
+  posts: PlantPost[];
   gift: Gift | null;
   forWhom: ForWhom | null;
 }

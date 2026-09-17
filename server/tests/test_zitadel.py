@@ -114,7 +114,7 @@ def test_id_token_is_verified_against_the_jwks_and_nonce() -> None:
         client.verify_id_token(token, nonce="wrong-nonce")
 
 
-def test_id_token_rejections() -> None:
+def test_rejections_become_zitadel_errors() -> None:
     private_key, jwks = make_keys()
     now = datetime.now(UTC)
 
@@ -133,14 +133,16 @@ def test_id_token_rejections() -> None:
     client = make_client()
     client.jwks = jwks
 
-    with pytest.raises(jwt.PyJWTError):
+    with pytest.raises(ZitadelError):
         client.verify_id_token(token(aud="someone-else"), nonce="no-1")
-    with pytest.raises(jwt.PyJWTError):
+    with pytest.raises(ZitadelError):
         client.verify_id_token(token(iss="https://evil.test"), nonce="no-1")
-    with pytest.raises(jwt.PyJWTError):
+    with pytest.raises(ZitadelError):
         client.verify_id_token(
             token(exp=int((now - timedelta(minutes=5)).timestamp())), nonce="no-1"
         )
+    with pytest.raises(ZitadelError):
+        client.verify_id_token("not-a-jwt", nonce="no-1")
 
     unknown_key = jwt.encode(
         {"iss": ISSUER, "aud": CLIENT_ID, "sub": "x", "nonce": "no-1", "iat": 0, "exp": 9_999_999_999},
@@ -150,3 +152,30 @@ def test_id_token_rejections() -> None:
     )
     with pytest.raises(ZitadelError):
         client.verify_id_token(unknown_key, nonce="no-1")
+
+
+def test_id_token_tolerates_clock_skew() -> None:
+    private_key, jwks = make_keys()
+    client = make_client()
+    client.jwks = jwks
+    now = int(time.time())
+
+    def token(iat_offset: int) -> str:
+        return jwt.encode(
+            {
+                "iss": ISSUER,
+                "aud": CLIENT_ID,
+                "sub": "zitadel-user-1",
+                "nonce": "no-1",
+                "iat": now + iat_offset,
+                "exp": now + 300,
+            },
+            private_key,
+            algorithm="RS256",
+            headers={"kid": "test-key"},
+        )
+
+    # The IDP's clock ahead of ours is normal; within the leeway it still works.
+    assert client.verify_id_token(token(iat_offset=30), nonce="no-1")["sub"] == "zitadel-user-1"
+    with pytest.raises(ZitadelError):
+        client.verify_id_token(token(iat_offset=600), nonce="no-1")

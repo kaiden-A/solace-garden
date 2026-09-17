@@ -4,11 +4,14 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { PlantArt } from "@/components/PlantArt";
+import { RichText, RichTextEditor } from "@/components/RichText";
 import WindScene from "@/components/WindScene";
 import { apiFetch } from "@/lib/api-client";
 import { CATEGORIES, STAGE_LABEL } from "@/lib/categories";
 import { fineFocus } from "@/lib/focus";
-import { artOf, metaOf } from "@/lib/species";
+import { postCount } from "@/lib/plants";
+import { metaOf } from "@/lib/species";
 import { toast } from "@/lib/toast";
 import type { PublicPlant } from "@/lib/types";
 
@@ -21,9 +24,11 @@ export default function PlantDetailPage() {
   const router = useRouter();
   const [plant, setPlant] = useState<PublicPlant | null>(null);
   const [failed, setFailed] = useState(false);
-  const [tendOpen, setTendOpen] = useState(false);
-  const [note, setNote] = useState("");
+  const [writeOpen, setWriteOpen] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [draft, setDraft] = useState("");
   const [grew, setGrew] = useState(false);
+  const [newborn, setNewborn] = useState(false);
   const [windConfirm, setWindConfirm] = useState(false);
   const [windOpen, setWindOpen] = useState(false);
 
@@ -37,24 +42,62 @@ export default function PlantDetailPage() {
       .catch(() => setFailed(true));
   }, [id]);
 
+  useEffect(() => {
+    // Arriving from a spawn: play the sprout-in once, then drop the flag.
+    if (new URLSearchParams(window.location.search).get("new") !== "1") return;
+    setNewborn(true);
+    const clear = setTimeout(() => router.replace(`/plants/${id}`, { scroll: false }), 6000);
+    const hide = setTimeout(() => setNewborn(false), 6000);
+    return () => {
+      clearTimeout(clear);
+      clearTimeout(hide);
+    };
+  }, [id, router]);
+
+  const grow = (updated: PublicPlant) => {
+    setPlant(updated);
+    setDraft("");
+    setWriteOpen(false);
+    setGrew(true);
+    setTimeout(() => setGrew(false), 950);
+  };
+
   const tend = async (event: React.FormEvent) => {
     event.preventDefault();
     const res = await apiFetch(`/api/plants/${id}/tend`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ note }),
+      body: JSON.stringify({ note: draft }),
     });
     if (!res.ok) {
       toast("Couldn't tend it just now.");
       return;
     }
-    const updated = (await res.json()) as PublicPlant;
-    setPlant(updated);
-    setNote("");
-    setTendOpen(false);
-    setGrew(true);
-    setTimeout(() => setGrew(false), 950);
-    toast(plant?.forWhom ? "Saved for them." : "It grew a little.");
+    grow((await res.json()) as PublicPlant);
+    toast("Saved for them.");
+  };
+
+  const addPost = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const res = await apiFetch(`/api/plants/${id}/posts`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ body: draft }),
+    });
+    if (!res.ok) {
+      toast("Couldn't write that just now.");
+      return;
+    }
+    const result = (await res.json()) as { plant: PublicPlant; spawned: PublicPlant | null };
+    if (result.spawned) {
+      setDraft("");
+      setComposerOpen(false);
+      router.push(`/plants/${result.spawned.id}?new=1`);
+      return;
+    }
+    grow(result.plant);
+    setComposerOpen(false);
+    toast("It grew a little.");
   };
 
   const beginWind = async () => {
@@ -98,10 +141,13 @@ export default function PlantDetailPage() {
   }
 
   const meta = metaOf(plant);
-  const chipLabel = plant.forWhom
+  const isLetter = Boolean(plant.forWhom);
+  const chipLabel = isLetter
     ? meta.label
     : (CATEGORIES[plant.category ?? "feeling"] ?? CATEGORIES.feeling).label;
-  const last = plant.events[plant.events.length - 1]?.at ?? plant.createdAt;
+  const last = isLetter
+    ? plant.events[plant.events.length - 1]?.at ?? plant.createdAt
+    : plant.posts[plant.posts.length - 1]?.at ?? plant.createdAt;
 
   return (
     <div className="detail-screen scene plants">
@@ -112,7 +158,7 @@ export default function PlantDetailPage() {
           </Link>
         </div>
         <div className="actions">
-          {plant.forWhom && (
+          {isLetter && (
             <Link className="btn btn-ghost" href="/harvest">
               <Icon name="basket" /> Harvest
             </Link>
@@ -122,10 +168,21 @@ export default function PlantDetailPage() {
 
       <div className="detail">
         <div className="card detail-card">
-          <h1>{plant.title || "Untitled"}</h1>
-          <span className="chip">
-            <Icon name={meta.icon} /> {STAGE_LABEL[plant.stage]} · {chipLabel}
-          </span>
+          {isLetter ? (
+            <h1>{plant.title}</h1>
+          ) : (
+            <div className="thread-head">
+              <h1>{chipLabel}</h1>
+              <span className="chip chip-stage" key={plant.stage}>
+                <Icon name={meta.icon} /> {STAGE_LABEL[plant.stage]}
+              </span>
+            </div>
+          )}
+          {isLetter && (
+            <span className="chip">
+              <Icon name={meta.icon} /> {STAGE_LABEL[plant.stage]} · {chipLabel}
+            </span>
+          )}
           {plant.forWhom && (
             <span className="chip chip-for">
               <Icon name="heart" /> For: {plant.forWhom.name}
@@ -137,54 +194,117 @@ export default function PlantDetailPage() {
             </span>
           ) : null}
           <p className="meta">
-            <Icon name="sprout" /> Planted on {fmtDate(plant.createdAt)} · <Icon name="droplet" /> Last tended{" "}
-            {fmtDate(last)}
+            <Icon name="sprout" /> Planted on {fmtDate(plant.createdAt)} · <Icon name="droplet" />{" "}
+            {isLetter ? "Last tended" : "Last written"} {fmtDate(last)}
+            {isLetter ? "" : ` · ${postCount(plant)} ${postCount(plant) === 1 ? "post" : "posts"}`}
           </p>
-          <blockquote>{plant.body}</blockquote>
 
-          <div className="log card">
-            <h3>Growth Log</h3>
-            <ul>
-              {[...plant.events].reverse().map((event, index) => (
-                <li key={index}>
-                  <span>{fmtDate(event.at)}</span>
-                  <span>{event.note || "Tended it again"}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          {isLetter ? (
+            <>
+              <blockquote>{plant.body}</blockquote>
+
+              <div className="log card">
+                <h3>Growth Log</h3>
+                <ul>
+                  {[...plant.events].reverse().map((event, index) => (
+                    <li key={index}>
+                      <span>{fmtDate(event.at)}</span>
+                      <span>{event.note || "Tended it again"}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </>
+          ) : (
+            <>
+              {newborn && (
+                <p className="newborn-ribbon">
+                  <Icon name="sparkle" /> A new seedling began
+                </p>
+              )}
+              {plant.stage === "withered" && (
+                <p className="quiet-line">
+                  This one has been quiet for a while. Write again to wake it.
+                </p>
+              )}
+
+              <div className={`composer${composerOpen ? " open" : ""}`}>
+                {composerOpen ? (
+                  <form className="composer-form" onSubmit={addPost}>
+                    <RichTextEditor
+                      value={draft}
+                      onChange={setDraft}
+                      rows={4}
+                      autoFocus
+                      placeholder="What do you feel right now?"
+                    />
+                    <div className="composer-actions">
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => {
+                          setDraft("");
+                          setComposerOpen(false);
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button className="btn btn-primary">Post it</button>
+                    </div>
+                  </form>
+                ) : (
+                  <button className="composer-line" onClick={() => setComposerOpen(true)}>
+                    <Icon name="droplet" /> Write what you feel…
+                  </button>
+                )}
+              </div>
+
+              <div className="posts">
+                {plant.posts
+                  .map((post, index) => ({ post, index }))
+                  .reverse()
+                  .map(({ post, index }) => (
+                    <article className="post card" key={index}>
+                      <span className="post-date">{fmtDate(post.at)}</span>
+                      <RichText text={post.body} />
+                    </article>
+                  ))}
+              </div>
+            </>
+          )}
         </div>
 
-        <aside className="detail-art">
+        <aside className={`detail-art${isLetter ? " letter-art" : " thread-art"}`}>
           <div
             className={`art big on-scene stage-${plant.stage}${plant.stage === "withered" ? " wilted" : ""}${
               grew ? " grew" : ""
-            }`}
+            }${newborn ? " born" : ""}`}
             style={{ "--glow": meta.glow } as React.CSSProperties}
           >
-            <img src={artOf(plant)} alt="" />
+            <PlantArt plant={plant} alt="" />
           </div>
-          <button className="btn btn-primary" onClick={() => setTendOpen((value) => !value)}>
-            <Icon name="droplet" /> {plant.forWhom ? "Write something for them" : "Add More"}
-          </button>
-          {tendOpen && (
-            <form className="tend-form" onSubmit={tend}>
-              <textarea
-                rows={3}
-                placeholder={plant.forWhom ? "What do you feel for them right now?" : "What changed since last time?"}
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-                ref={fineFocus}
-              />
-              <button className="btn btn-primary">Tend it</button>
-            </form>
+
+          {isLetter && (
+            <>
+              <button className="btn btn-primary" onClick={() => setWriteOpen((value) => !value)}>
+                <Icon name="droplet" /> Write something for them
+              </button>
+              {writeOpen && (
+                <form className="tend-form" onSubmit={tend}>
+                  <textarea
+                    rows={3}
+                    placeholder="What do you feel for them right now?"
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    ref={fineFocus}
+                  />
+                  <button className="btn btn-primary">Tend it</button>
+                </form>
+              )}
+            </>
           )}
-          {!plant.forWhom && plant.stage === "withered" && (
-            <p className="quiet-hint">
-              This one&apos;s been quiet for a while. Tend it back, or let the wind take it.
-            </p>
-          )}
-          {!plant.forWhom && plant.status === "growing" && (
+
+          {!isLetter && plant.status === "growing" && (
             <div className="let-wind">
               {windConfirm ? (
                 <>

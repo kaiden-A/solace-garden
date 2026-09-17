@@ -5,7 +5,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession
 
-from ..models import Plant, PlantEvent, User
+from ..models import Plant, PlantEvent, PlantPost, User
 from ..models.enums import (
     Category,
     EventType,
@@ -15,7 +15,7 @@ from ..models.enums import (
     as_category,
     as_species,
 )
-from ..schemas.plants import ForWhomIn, ForWhomOut, GiftOut, PlantEventOut, PlantPublic
+from ..schemas.plants import ForWhomIn, ForWhomOut, GiftOut, PlantEventOut, PlantPublic, PostOut
 from ..utils import to_ms
 from . import security
 from .growth import derive_stage
@@ -101,8 +101,9 @@ def create_plant(
 
     plant = Plant(
         owner_id=owner.id,
-        title=(title or "").strip(),
-        body=body.strip(),
+        # Letters carry a title and one body; feelings are all posts.
+        title=(title or "").strip() if is_person else "",
+        body=body.strip() if is_person else "",
         category=chosen_category,
         species=chosen_species,
         status=PlantStatus.released if release else PlantStatus.growing,
@@ -112,7 +113,10 @@ def create_plant(
         for_whom_give_on=give_on,
         **placement,
     )
-    plant.events.append(PlantEvent(type=EventType.planted, note="Planted the seed"))
+    if is_person:
+        plant.events.append(PlantEvent(type=EventType.planted, note="Planted the seed"))
+    else:
+        plant.posts.append(PlantPost(body=body.strip()))
     db.add(plant)
     db.commit()
     return plant
@@ -124,6 +128,79 @@ def tend_plant(db: DbSession, plant: Plant, note: str | None) -> Plant:
     )
     db.commit()
     return plant
+
+
+def add_post(db: DbSession, plant: Plant, body: str) -> tuple[Plant, Plant | None]:
+    """Writes a feeling into the plant and returns (plant, spawned).
+
+    A plant that has already grown to fruit is full: the post starts a new
+    plant of the same feeling next to it, and the garden keeps growing.
+    """
+    text = body.strip()
+    if stage_of(plant) is Stage.fruit:
+        spawned = _spawn_plant(db, plant)
+        spawned.posts.append(PlantPost(body=text))
+        db.commit()
+        return plant, spawned
+
+    plant.posts.append(PlantPost(body=text))
+    db.commit()
+    return plant, None
+
+
+def _spawn_plant(db: DbSession, parent: Plant) -> Plant:
+    key = parent.category.value if parent.category else "feeling"
+    spawned = Plant(
+        owner_id=parent.owner_id,
+        title="",
+        body="",
+        category=parent.category,
+        status=PlantStatus.growing,
+        seed=random.randrange(997),
+        **_place(key, _placement_count(db, parent.owner_id, key)),
+    )
+    db.add(spawned)
+    return spawned
+
+
+def latest_feeling(db: DbSession, owner_id, category: Category) -> Plant | None:
+    """The plant a new post should feed: the newest visible one of that feeling."""
+    return db.scalar(
+        select(Plant)
+        .where(
+            Plant.owner_id == owner_id,
+            Plant.category == category,
+            Plant.for_whom_name.is_(None),
+            Plant.status != PlantStatus.released,
+        )
+        .order_by(Plant.created_at.desc())
+        .limit(1)
+    )
+
+
+def water_feeling(
+    db: DbSession,
+    *,
+    owner: User,
+    category: Category,
+    body: str,
+) -> tuple[Plant, Plant | None]:
+    """Writes into the newest plant of a feeling, planting the first one when
+    the garden has none yet. Growing and spawning are add_post's business."""
+    plant = latest_feeling(db, owner.id, category)
+    if plant is None:
+        plant = create_plant(
+            db,
+            owner=owner,
+            title=None,
+            body=body,
+            category=category.value,
+            species=None,
+            release=False,
+            for_whom=None,
+        )
+        return plant, None
+    return add_post(db, plant, body)
 
 
 def release_plant(db: DbSession, plant: Plant) -> Plant:
@@ -158,10 +235,12 @@ def _unique_gift_token(db: DbSession, attempts: int = 5) -> str:
 
 
 def stage_of(plant: Plant) -> Stage:
-    return derive_stage(
-        event_times=[event.at for event in plant.events],
-        created_at=plant.created_at,
-    )
+    """Letters grow through tending events; feelings grow through posts."""
+    if plant.is_letter:
+        times = [event.at for event in plant.events]
+    else:
+        times = [post.at for post in plant.posts]
+    return derive_stage(event_times=times, created_at=plant.created_at)
 
 
 def plant_public(plant: Plant) -> PlantPublic:
@@ -197,6 +276,7 @@ def plant_public(plant: Plant) -> PlantPublic:
             PlantEventOut(type=event.type.value, note=event.note, at=to_ms(event.at) or 0)
             for event in plant.events
         ],
+        posts=[PostOut(body=post.body, at=to_ms(post.at) or 0) for post in plant.posts],
         gift=gift,
         forWhom=for_whom,
         stage=stage_of(plant),

@@ -6,10 +6,10 @@ import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { apiFetch } from "@/lib/api-client";
 import { STAGE_LABEL } from "@/lib/categories";
-import { artOf, SPECIES, speciesOf } from "@/lib/species";
+import { SPECIES, speciesOf } from "@/lib/species";
 import type { PublicPlant } from "@/lib/types";
 import { Icon } from "./Icon";
-
+import { PlantArt } from "./PlantArt";
 const fmtDate = (ms: number) =>
   new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
@@ -59,7 +59,7 @@ export function GrowingView() {
                   className={`art harvest-art stage-${plant.stage}`}
                   style={{ "--glow": meta.glow } as CSSProperties}
                 >
-                  <img src={artOf(plant)} alt="" loading="lazy" decoding="async" />
+                  <PlantArt plant={plant} alt="" loading="lazy" decoding="async" />
                 </div>
               </div>
               <span className="chip chip-for">

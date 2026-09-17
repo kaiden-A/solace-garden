@@ -13,6 +13,10 @@ import jwt
 
 SCOPE = "openid profile email"
 
+# The IDP's clock is never exactly ours: a token minted "now" can arrive with
+# an iat a second or two in the future and would otherwise fail validation.
+CLOCK_SKEW_SECONDS = 60
+
 
 class ZitadelError(RuntimeError):
     pass
@@ -69,7 +73,10 @@ class ZitadelClient:
 
     def verify_id_token(self, id_token: str, *, nonce: str) -> dict:
         key_set = self.jwks if self.jwks is not None else self._fetch_jwks()
-        kid = jwt.get_unverified_header(id_token).get("kid")
+        try:
+            kid = jwt.get_unverified_header(id_token).get("kid")
+        except jwt.PyJWTError as exc:
+            raise ZitadelError(f"malformed id_token: {exc}") from exc
         try:
             parsed = jwt.PyJWKSet.from_dict(key_set)
             key = parsed[kid] if kid else parsed.keys[0]
@@ -77,14 +84,20 @@ class ZitadelClient:
             raise ZitadelError(f"unknown signing key: {exc}") from exc
 
         algorithms = self.discovery().get("id_token_signing_alg_values_supported") or ["RS256"]
-        claims = jwt.decode(
-            id_token,
-            key.key,
-            algorithms=[alg for alg in algorithms if alg != "none"],
-            audience=self.client_id,
-            issuer=self.issuer.rstrip("/"),
-            options={"require": ["exp", "iat", "sub", "aud", "iss"]},
-        )
+        try:
+            claims = jwt.decode(
+                id_token,
+                key.key,
+                algorithms=[alg for alg in algorithms if alg != "none"],
+                audience=self.client_id,
+                issuer=self.issuer.rstrip("/"),
+                options={"require": ["exp", "iat", "sub", "aud", "iss"]},
+                leeway=CLOCK_SKEW_SECONDS,
+            )
+        except jwt.PyJWTError as exc:
+            # Includes expired tokens and clock skew beyond the leeway: the
+            # router turns ZitadelError into a friendly sign-in failure.
+            raise ZitadelError(f"id_token rejected: {exc}") from exc
         if claims.get("nonce") != nonce:
             raise ZitadelError("nonce mismatch")
         return claims

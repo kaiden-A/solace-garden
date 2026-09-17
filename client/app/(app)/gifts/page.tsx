@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { apiFetch } from "@/lib/api-client";
+import { plantHeadline } from "@/lib/plants";
 import { metaOf } from "@/lib/species";
 import { mailtoFor } from "@/lib/mailto";
 import { toast } from "@/lib/toast";
@@ -50,7 +51,7 @@ export default function GiftsPage() {
               <span className="chip">
                 <Icon name={meta.icon} /> For {plant.gift?.to}
               </span>
-              <h3 style={{ marginTop: 10 }}>{plant.title || "Untitled"}</h3>
+              <h3 style={{ marginTop: 10 }}>{plantHeadline(plant) || "A gift"}</h3>
               <p className="preview">Given {fmtDate(plant.gift?.givenAt ?? 0)}</p>
               <input className="copy-input" readOnly value={url} />
               <div className="row">

@@ -28,6 +28,15 @@ class TendRequest(BaseModel):
     note: str | None = None
 
 
+class PostCreate(BaseModel):
+    body: str
+
+
+class PostOut(BaseModel):
+    body: str
+    at: int
+
+
 class GiveRequest(BaseModel):
     to: str | None = None
     note: str | None = None
@@ -60,6 +69,14 @@ class PlantPublic(BaseModel):
     seed: int
     createdAt: int
     events: list[PlantEventOut] = Field(default_factory=list)
+    posts: list[PostOut] = Field(default_factory=list)
     gift: GiftOut | None = None
     forWhom: ForWhomOut | None = None
     stage: Stage
+
+
+class PostResultOut(BaseModel):
+    """A new post can outgrow its plant: `spawned` is the seedling it began."""
+
+    plant: PlantPublic
+    spawned: PlantPublic | None = None

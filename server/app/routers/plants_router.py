@@ -5,8 +5,16 @@ from ..database import get_db
 from ..dependencies import require_user
 from ..models import User
 from ..models.enums import CATEGORY_VALUES, SPECIES_VALUES
-from ..schemas.plants import GiveRequest, PlantCreate, PlantPublic, TendRequest
+from ..schemas.plants import (
+    GiveRequest,
+    PlantCreate,
+    PlantPublic,
+    PostCreate,
+    PostResultOut,
+    TendRequest,
+)
 from ..services.plants_services import (
+    add_post,
     create_plant,
     get_plant,
     give_plant,
@@ -80,7 +88,30 @@ def tend(
     db: DbSession = Depends(get_db),
 ) -> PlantPublic:
     plant = _owned(db, plant_id, user)
+    if not plant.is_letter:
+        raise HTTPException(status_code=400, detail="Write a post instead.")
     return plant_public(tend_plant(db, plant, payload.note))
+
+
+@router.post("/{plant_id}/posts", response_model=PostResultOut)
+def post(
+    plant_id: str,
+    payload: PostCreate,
+    user: User = Depends(require_user),
+    db: DbSession = Depends(get_db),
+) -> PostResultOut:
+    body = (payload.body or "").strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="Write something first.")
+    plant = _owned(db, plant_id, user)
+    if plant.is_letter:
+        raise HTTPException(status_code=400, detail="Letters grow through tending.")
+
+    plant, spawned = add_post(db, plant, body)
+    return PostResultOut(
+        plant=plant_public(plant),
+        spawned=plant_public(spawned) if spawned is not None else None,
+    )
 
 
 @router.post("/{plant_id}/release")

@@ -5,7 +5,14 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .config import get_settings
-from .routers import auth_router, gifts_router, health_router, plants_router
+from .routers import (
+    auth_router,
+    feelings_router,
+    gifts_router,
+    health_router,
+    music_router,
+    plants_router,
+)
 
 settings = get_settings()
 
@@ -44,4 +51,6 @@ async def validation_error(_request: Request, exc: RequestValidationError) -> JS
 app.include_router(health_router.router)
 app.include_router(auth_router.router)
 app.include_router(plants_router.router)
+app.include_router(feelings_router.router)
 app.include_router(gifts_router.router)
+app.include_router(music_router.router)

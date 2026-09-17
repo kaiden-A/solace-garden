@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { RichText } from "@/components/RichText";
 import { artOfSpecies, SPECIES } from "@/lib/species";
 import type { GiftPayload } from "@/lib/types";
 
@@ -57,7 +58,7 @@ export default function GiftPage() {
         <div className="gift-body">
           <span className="chip">For: {gift.to}</span>
           {gift.title ? <h2>{gift.title}</h2> : null}
-          <blockquote>{gift.body}</blockquote>
+          {gift.body ? <blockquote>{gift.body}</blockquote> : null}
           {gift.note ? <p className="gift-note">{gift.note}</p> : null}
           {gift.letters.length > 0 ? (
             <div className="letter-log">
@@ -66,7 +67,7 @@ export default function GiftPage() {
                 {[...gift.letters].reverse().map((letter, index) => (
                   <li key={index}>
                     <span>{fmtDate(letter.at)}</span>
-                    <p>{letter.note}</p>
+                    <RichText text={letter.note} />
                   </li>
                 ))}
               </ul>
