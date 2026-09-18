@@ -10,6 +10,7 @@ from .routers import (
     feelings_router,
     gifts_router,
     health_router,
+    maintenance_router,
     music_router,
     plants_router,
 )
@@ -54,3 +55,4 @@ app.include_router(plants_router.router)
 app.include_router(feelings_router.router)
 app.include_router(gifts_router.router)
 app.include_router(music_router.router)
+app.include_router(maintenance_router.router)

@@ -73,11 +73,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Link
               className="guest-cta"
               href="/signup"
-              title="Sign in to keep this garden"
-              aria-label="Sign in to keep this garden"
+              title="Create your own garden"
+              aria-label="Create your own garden"
             >
               <Icon name="heart" />
-              <span>Sign in to keep this garden →</span>
+              <span>Create your own garden →</span>
             </Link>
           )}
           <MusicMini />

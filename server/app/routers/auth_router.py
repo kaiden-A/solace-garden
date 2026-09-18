@@ -133,15 +133,14 @@ def callback(
     email = claims.get("email")
     name = claims.get("name") or claims.get("preferred_username")
 
-    if guest is not None and guest.kind is UserKind.guest and guest.zitadel_sub is None:
-        # Guest -> member: keep the local row so the garden they planted survives.
-        user = auth_services.link_zitadel_identity(
-            db, user=guest, issuer=issuer, subject=subject, email=email, name=name
-        )
-    else:
-        user = auth_services.find_or_create_member(
-            db, issuer=issuer, subject=subject, email=email, name=name
-        )
+    if guest is not None and guest.kind is UserKind.guest:
+        # A guest garden is a throwaway, never an account: drop the row and
+        # let the database cascade its plants, posts, gifts and sessions.
+        db.delete(guest)
+        db.flush()
+    user = auth_services.find_or_create_member(
+        db, issuer=issuer, subject=subject, email=email, name=name
+    )
 
     token = auth_services.create_session(
         db,

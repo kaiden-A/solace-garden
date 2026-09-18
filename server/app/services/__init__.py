@@ -1,7 +1,6 @@
 from .auth_services import (
     create_guest,
     create_session,
-    link_zitadel_identity,
     revoke_session,
     session_user,
 )
@@ -25,7 +24,6 @@ __all__ = [
     "get_plant",
     "gift_payload",
     "give_plant",
-    "link_zitadel_identity",
     "list_plants",
     "plant_public",
     "release_plant",

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     db_schema: str = "public"
 
     app_secret: str = "dev-only-insecure-secret"
+    cleanup_secret: str = ""
     api_base_url: str = "http://localhost:8000"
     public_base_url: str = "http://localhost:3000"
 
@@ -25,7 +26,7 @@ class Settings(BaseSettings):
 
     session_cookie_name: str = "solace_session"
     session_ttl_days: int = 30
-    guest_ttl_days: int = 14
+    guest_ttl_days: int = 7
     cookie_secure: bool = False
 
     # YouTube Data API v3 key (server-side only, never sent to the browser).

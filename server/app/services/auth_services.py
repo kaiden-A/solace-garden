@@ -91,28 +91,6 @@ def find_member(db: DbSession, *, issuer: str, subject: str) -> User | None:
     )
 
 
-def link_zitadel_identity(
-    db: DbSession,
-    *,
-    user: User,
-    issuer: str,
-    subject: str,
-    email: str | None,
-    name: str | None,
-) -> User:
-    """Guest -> member upgrade: the local row (and everything it owns) survives."""
-    user.kind = UserKind.member
-    user.idp_issuer = issuer
-    user.zitadel_sub = subject
-    user.guest_expires_at = None
-    if email:
-        user.email = email.strip().lower()
-    if name:
-        user.display_name = name.strip()
-    db.commit()
-    return user
-
-
 def find_or_create_member(
     db: DbSession,
     *,
@@ -130,10 +108,6 @@ def find_or_create_member(
             changed = True
         if name and user.display_name != name.strip():
             user.display_name = name.strip()
-            changed = True
-        if user.kind is UserKind.guest:
-            user.kind = UserKind.member
-            user.guest_expires_at = None
             changed = True
         if changed:
             db.commit()

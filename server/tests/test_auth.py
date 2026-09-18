@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import uuid
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session as DbSession
@@ -90,22 +91,13 @@ def test_callback_provisions_a_local_user_and_links_the_subject(
     assert db.query(User).filter(User.zitadel_sub == "zitadel-1").count() == 1
 
 
-def test_guest_gets_a_seeded_garden_and_becomes_a_member_without_losing_it(
-    idp_client: TestClient, fake_idp: FakeZitadel
+def test_guest_garden_is_discarded_when_they_sign_up(
+    idp_client: TestClient, fake_idp: FakeZitadel, db: DbSession
 ) -> None:
     guest = idp_client.post("/api/auth/guest")
     assert guest.status_code == 201
-    assert guest.json()["kind"] == "guest"
-    assert guest.json()["email"] == ""
-    guest_id = guest.json()["id"]
-
-    me = idp_client.get("/api/auth/me")
-    assert me.status_code == 200
-    assert me.json()["name"] == "Guest Gardener"
-
-    plants = idp_client.get("/api/plants").json()
-    assert len(plants) == 17
-    assert {plant["stage"] for plant in plants} <= {"seed", "sprout", "flower", "fruit", "withered"}
+    guest_id = uuid.UUID(guest.json()["id"])
+    assert len(idp_client.get("/api/plants").json()) == 17
 
     fake_idp.claims = {"sub": "zitadel-guest", "email": "guest@example.com", "name": "Was A Guest"}
     idp_client.get("/api/auth/login")
@@ -114,10 +106,33 @@ def test_guest_gets_a_seeded_garden_and_becomes_a_member_without_losing_it(
 
     assert response.status_code == 302
     assert response.headers["location"] == "/garden"
-    upgraded = idp_client.get("/api/auth/me").json()
-    assert upgraded["id"] == guest_id, "the guest row must survive the upgrade"
-    assert upgraded["kind"] == "member"
-    assert len(idp_client.get("/api/plants").json()) == 17
+    member = idp_client.get("/api/auth/me").json()
+    assert member["id"] != str(guest_id), "a guest row must never become the account"
+    assert member["kind"] == "member"
+    assert idp_client.get("/api/plants").json() == [], "guest plants must not carry over"
+    assert db.query(User).filter(User.id == guest_id).count() == 0
+    assert db.query(User).filter(User.zitadel_sub == "zitadel-guest").count() == 1
+
+
+def test_guest_with_an_existing_identity_signs_into_that_member(
+    idp_client: TestClient, fake_idp: FakeZitadel, db: DbSession, make_user
+) -> None:
+    member = make_user(db, name="Ada", zitadel_sub="zitadel-1")
+    member.idp_issuer = settings.zitadel_issuer.rstrip("/")
+    db.commit()
+    guest = idp_client.post("/api/auth/guest")
+    assert guest.status_code == 201
+    guest_id = uuid.UUID(guest.json()["id"])
+
+    fake_idp.claims = {"sub": "zitadel-1", "email": "ada@example.com", "name": "Ada"}
+    idp_client.get("/api/auth/login")
+    payload = oauth_payload(idp_client)
+    response = idp_client.get(f"/api/auth/callback?code=abc&state={payload['state']}")
+
+    assert response.status_code == 302
+    assert idp_client.get("/api/auth/me").json()["id"] == str(member.id)
+    assert db.query(User).filter(User.id == guest_id).count() == 0
+    assert db.query(User).filter(User.zitadel_sub == "zitadel-1").count() == 1
 
 
 def test_logout_revokes_the_session(
