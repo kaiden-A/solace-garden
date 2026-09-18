@@ -39,11 +39,47 @@ class Settings(BaseSettings):
     # Soft, process-local ceiling below the project's daily search bucket.
     music_search_daily_cap: int = 90
 
+    # --- MCP (Model Context Protocol) endpoint, mounted at /mcp ---
+    # Phase 1 auth: one static bearer key that acts as the owner account.
+    # Phase 2: Zitadel access tokens are accepted too, so MCP hosts can sign
+    # users in through the IdP; the static key stays for header-only clients.
+    mcp_enabled: bool = True
+    mcp_api_key: str = ""
+    mcp_owner_email: str = ""
+    # Host allowlist for the MCP transport (DNS-rebinding protection). Each
+    # entry also matches the host with any port. Empty falls back to localhost.
+    mcp_allowed_hosts: str = "localhost,127.0.0.1,[::1],testserver"
+    # Browser Origin allowlist; empty rejects browser origins. MCP clients are
+    # not browsers and send no Origin header, so they are unaffected.
+    mcp_allowed_origins: str = ""
+    # Require this audience ("aud") on Zitadel access tokens; empty accepts any
+    # Zitadel-signed token whose subject maps to a member.
+    mcp_audience: str = ""
+    # JWKS override; empty uses the issuer's /oauth/v2/keys endpoint.
+    mcp_jwks_url: str = ""
+
     cors_origins: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def mcp_resource_url(self) -> str:
+        """The RFC 8707 resource identifier clients request tokens for."""
+        return f"{self.api_base_url.rstrip('/')}/mcp"
+
+    @property
+    def mcp_allowed_host_list(self) -> list[str]:
+        return _with_port_patterns(self.mcp_allowed_hosts)
+
+    @property
+    def mcp_allowed_origin_list(self) -> list[str]:
+        return _with_port_patterns(self.mcp_allowed_origins)
+
+    @property
+    def mcp_jwks_endpoint(self) -> str:
+        return self.mcp_jwks_url.strip() or f"{self.zitadel_issuer.rstrip('/')}/oauth/v2/keys"
 
     @property
     def sqlalchemy_url(self) -> str:
@@ -73,6 +109,18 @@ class Settings(BaseSettings):
             part.startswith("sslmode=") and part.split("=", 1)[1] in {"require", "verify-ca", "verify-full"}
             for part in self.database_url.partition("?")[2].split("&")
         )
+
+
+def _with_port_patterns(value: str) -> list[str]:
+    """Each entry also matches "entry:<port>", the shape a Host header takes."""
+    patterns: list[str] = []
+    for entry in (part.strip() for part in value.split(",")):
+        if not entry:
+            continue
+        patterns.append(entry)
+        if not entry.endswith(":*"):
+            patterns.append(f"{entry}:*")
+    return patterns
 
 
 @lru_cache

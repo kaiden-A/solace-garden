@@ -17,7 +17,8 @@
 - Sync SQLAlchemy + pg8000 + explicit `public` schema are deliberate (Neon transaction-mode pooler; this machine's Application Control blocks psycopg/libpq DLLs). Do not switch to asyncpg/psycopg.
 - Migrations: `uv run --directory server alembic upgrade head`. Autogenerate falsely wants to drop/recreate schema-qualified FKs, so review every migration by hand. Deploys do not run migrations.
 - Errors render as `{"error": "..."}` (handler in `app/main.py`); user-facing schemas are camelCase to match `client/lib/types.ts`, DB columns stay snake_case.
-- `server/.env` holds real secrets; `server/.env.example` documents every setting.
+- `server/.env` holds real secrets; `server/.env.example` documents every setting (that file is ignored by the repo's `.env.*` rule and stays untracked).
+- MCP: `/mcp` is a Streamable HTTP MCP server (`mcp` v2, stateless + JSON) in `app/mcp_server.py` + `app/mcp_tools.py`, mounted at the root after every `/api` route; the FastAPI lifespan starts its session manager through a stable mount proxy (the SDK manager can only `run()` once per instance, so the app is rebuilt per lifespan). Auth: static `MCP_API_KEY` acting as `MCP_OWNER_EMAIL`, or a Zitadel JWT whose `sub` maps to a member via `(idp_issuer, zitadel_sub)`. `MCP_ALLOWED_HOSTS` is the DNS-rebinding Host allowlist (tests rely on `testserver`; add the deployed hostname). Tools call `app/services/*` directly on a worker thread. Tests: `tests/test_mcp.py` with the `mcp_client` fixture.
 
 ## Auth invariants (Elysiaa = Zitadel OIDC, PKCE)
 

@@ -1,9 +1,13 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from . import mcp_server, mcp_tools  # noqa: F401  (mcp_tools registers the tools)
 from .config import get_settings
 from .routers import (
     auth_router,
@@ -17,10 +21,26 @@ from .routers import (
 
 settings = get_settings()
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """The host owns the session manager: a mounted app's lifespan never runs."""
+    if not settings.mcp_enabled:
+        yield
+        return
+    mcp_server.start()
+    try:
+        async with mcp_server.mcp.session_manager.run():
+            yield
+    finally:
+        mcp_server.stop()
+
+
 app = FastAPI(
     title="Solace Garden API",
     version="0.1.0",
     description="Plants, gifts and auth for the Solace Garden client.",
+    lifespan=lifespan,
 )
 
 if settings.cors_origin_list:
@@ -56,3 +76,8 @@ app.include_router(feelings_router.router)
 app.include_router(gifts_router.router)
 app.include_router(music_router.router)
 app.include_router(maintenance_router.router)
+
+if settings.mcp_enabled:
+    # Mounted last on purpose: Starlette tries routes in order, so every
+    # /api/* route above wins and the MCP app only sees the rest.
+    app.mount("/", mcp_server.mcp_mount)

@@ -199,3 +199,24 @@ def fake_youtube() -> FakeYouTube:
 def music_client(client: TestClient, fake_youtube: FakeYouTube) -> TestClient:
     app.dependency_overrides[get_youtube] = lambda: fake_youtube
     return client
+
+
+@pytest.fixture
+def mcp_owner(make_user, db: DbSession) -> User:
+    return make_user(db)
+
+
+@pytest.fixture
+def mcp_env(monkeypatch, mcp_owner: User) -> User:
+    """The MCP tools run against the throwaway schema as a static-key owner."""
+    import app.mcp_server as mcp_server
+
+    monkeypatch.setattr(mcp_server, "_session_factory", TestingSession)
+    monkeypatch.setattr(settings, "mcp_api_key", "test-mcp-key")
+    monkeypatch.setattr(settings, "mcp_owner_email", mcp_owner.email)
+    return mcp_owner
+
+
+@pytest.fixture
+def mcp_client(client: TestClient, mcp_env: User) -> TestClient:
+    return client
