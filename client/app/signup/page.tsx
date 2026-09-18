@@ -34,7 +34,7 @@ export default function SignupPage() {
         <p className="sub">A quiet place that&apos;s only yours.</p>
 
         <div className="auth-form">
-          <a className="btn btn-primary" href="/api/auth/signup?next=/garden">
+          <a className="btn btn-primary" href="/api/auth/login?next=/garden">
             Create your garden with Elysiaa
           </a>
           {error && <p className="auth-error">{error}</p>}

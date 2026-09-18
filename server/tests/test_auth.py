@@ -128,3 +128,18 @@ def test_logout_revokes_the_session(
     assert client.get("/api/auth/me").status_code == 200
     assert client.post("/api/auth/logout").json() == {"ok": True, "logoutUrl": None}
     assert client.get("/api/auth/me").status_code == 401
+
+
+def test_logout_sends_linked_members_through_the_idp_end_session(
+    idp_client: TestClient, fake_idp: FakeZitadel, db: DbSession, make_user, sign_in
+) -> None:
+    sign_in(make_user(db, zitadel_sub="zitadel-1"))
+
+    assert idp_client.post("/api/auth/logout").json() == {
+        "ok": True,
+        "logoutUrl": "https://idp.test/end_session",
+    }
+    assert fake_idp.end_session_calls == [
+        {"id_token_hint": None, "post_logout_redirect_uri": settings.zitadel_post_logout_uri}
+    ]
+    assert idp_client.get("/api/auth/me").status_code == 401

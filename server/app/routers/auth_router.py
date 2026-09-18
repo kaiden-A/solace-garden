@@ -2,6 +2,7 @@ import hmac
 import time
 from urllib.parse import urlencode
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session as DbSession
@@ -169,12 +170,28 @@ def me(user: User = Depends(require_user)) -> PublicUser:
 @router.post("/logout")
 def logout(
     request: Request,
+    user: User | None = Depends(current_user),
     db: DbSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    zitadel: ZitadelClient = Depends(get_zitadel),
 ) -> Response:
+    """Ends the local session and, for SSO members, the IdP session too.
+
+    Without the IdP round-trip the Zitadel cookie survives, so the next
+    "Continue with Elysiaa SSO" silently signs the user back in.
+    """
     token = request.cookies.get(settings.session_cookie_name)
     auth_services.revoke_session(db, token)
-    response = JSONResponse(LogoutResponse().model_dump())
+    logout_url = None
+    if user is not None and user.zitadel_sub is not None:
+        try:
+            logout_url = zitadel.end_session_url(
+                post_logout_redirect_uri=settings.zitadel_post_logout_uri
+            )
+        except (httpx.HTTPError, KeyError):
+            # Never trap someone in the app because discovery is down.
+            logout_url = None
+    response = JSONResponse(LogoutResponse(logoutUrl=logout_url).model_dump())
     clear_cookie(response, settings.session_cookie_name, settings=settings)
     return response
 

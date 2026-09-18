@@ -102,11 +102,18 @@ class ZitadelClient:
             raise ZitadelError("nonce mismatch")
         return claims
 
-    def end_session_url(self, *, id_token_hint: str | None = None) -> str:
+    def end_session_url(
+        self,
+        *,
+        id_token_hint: str | None = None,
+        post_logout_redirect_uri: str | None = None,
+    ) -> str:
         endpoint = self.discovery()["end_session_endpoint"]
         params = {"client_id": self.client_id}
         if id_token_hint:
             params["id_token_hint"] = id_token_hint
+        if post_logout_redirect_uri:
+            params["post_logout_redirect_uri"] = post_logout_redirect_uri
         return f"{endpoint}?{urlencode(params)}"
 
     def _fetch_jwks(self) -> dict:

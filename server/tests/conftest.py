@@ -87,8 +87,9 @@ def _make_user(
     kind: UserKind = UserKind.member,
     name: str = "Ada",
     email: str | None = "ada@example.com",
+    zitadel_sub: str | None = None,
 ) -> User:
-    user = User(kind=kind, display_name=name, email=email)
+    user = User(kind=kind, display_name=name, email=email, zitadel_sub=zitadel_sub)
     db.add(user)
     db.commit()
     return user
@@ -117,6 +118,7 @@ class FakeZitadel:
         self.token_requests: list[dict] = []
         self.authorize_requests: list[dict] = []
         self.verify_calls: list[dict] = []
+        self.end_session_calls: list[dict] = []
 
     def authorize_url(self, *, state, nonce, code_challenge, redirect_uri) -> str:  # noqa: ANN001
         self.authorize_requests.append(
@@ -139,7 +141,10 @@ class FakeZitadel:
         self.verify_calls.append({"id_token": id_token, "nonce": nonce})
         return {**self.claims, "nonce": nonce}
 
-    def end_session_url(self, *, id_token_hint: str | None = None) -> str:
+    def end_session_url(self, *, id_token_hint=None, post_logout_redirect_uri=None) -> str:  # noqa: ANN001
+        self.end_session_calls.append(
+            {"id_token_hint": id_token_hint, "post_logout_redirect_uri": post_logout_redirect_uri}
+        )
         return "https://idp.test/end_session"
 
 

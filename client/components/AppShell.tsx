@@ -32,7 +32,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    const res = await fetch("/api/auth/logout", { method: "POST" });
+    const data = (await res.json().catch(() => ({}))) as { logoutUrl?: string | null };
+    if (data.logoutUrl) {
+      // SSO member: end the Elysiaa session too, then it bounces back to /login.
+      window.location.href = data.logoutUrl;
+      return;
+    }
     toast("You stepped out of the garden.");
     window.location.href = "/login";
   };
