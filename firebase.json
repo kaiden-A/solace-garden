@@ -19,6 +19,34 @@
         }
       },
       {
+        "source": "/docs",
+        "run": {
+          "serviceId": "elysiaa-solace-server",
+          "region": "asia-southeast1"
+        }
+      },
+      {
+        "source": "/docs/**",
+        "run": {
+          "serviceId": "elysiaa-solace-server",
+          "region": "asia-southeast1"
+        }
+      },
+      {
+        "source": "/redoc",
+        "run": {
+          "serviceId": "elysiaa-solace-server",
+          "region": "asia-southeast1"
+        }
+      },
+      {
+        "source": "/openapi.json",
+        "run": {
+          "serviceId": "elysiaa-solace-server",
+          "region": "asia-southeast1"
+        }
+      },
+      {
         "source": "/.well-known/**",
         "run": {
           "serviceId": "elysiaa-solace-server",

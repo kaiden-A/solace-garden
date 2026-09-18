@@ -39,7 +39,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="Solace Garden API",
     version="0.1.0",
-    description="Plants, gifts and auth for the Solace Garden client.",
+    description="Plants,gifts and auth for the Solace Garden client.",
     lifespan=lifespan,
 )
 
