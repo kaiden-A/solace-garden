@@ -19,6 +19,7 @@ from .models.enums import CATEGORY_VALUES, SPECIES_VALUES, as_category
 from .schemas.plants import ForWhomIn
 from .services import music_services, plants_services
 from .services.youtube import YouTubeClient, YouTubeError, YouTubeQuotaError, parse_video_id
+from .utils import from_ms
 
 settings = get_settings()
 
@@ -91,6 +92,10 @@ def create_plant(
         str | None, Field(description="Recipient name; turns the plant into a letter.")
     ] = None,
     for_whom_email: Annotated[str | None, Field(description="Recipient email, optional.")] = None,
+    give_on: Annotated[
+        str | None,
+        Field(description="Give-on date for a letter, YYYY-MM-DD (e.g. 2027-07-11)."),
+    ] = None,
 ) -> dict:
     """Plant a feeling, or write a letter for someone (set for_whom_name)."""
     text = body.strip()
@@ -103,11 +108,15 @@ def create_plant(
         chosen_species = species or "foxglove"
         if chosen_species not in SPECIES_VALUES:
             raise ToolError("Choose a valid plant type for the letter.")
+        try:
+            from_ms(give_on)
+        except ValueError as exc:
+            raise ToolError("Give-on date must look like YYYY-MM-DD.") from exc
     elif category not in CATEGORY_VALUES:
         raise ToolError("Choose a theme: gratitude, memory, hope, anger or feeling.")
 
     for_whom = (
-        ForWhomIn(name=recipient, email=(for_whom_email or "").strip() or None)
+        ForWhomIn(name=recipient, email=(for_whom_email or "").strip() or None, giveOn=give_on)
         if recipient
         else None
     )

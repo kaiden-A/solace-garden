@@ -7,6 +7,7 @@ mapping are all exercised.
 """
 
 import json
+from datetime import UTC, datetime
 
 import jwt
 import pytest
@@ -161,6 +162,27 @@ def test_write_feeling_plants_and_writes(mcp_client):
     )
     assert payload["plant"]["category"] == "hope"
     assert payload["plant"]["posts"][0]["body"] == "maybe tomorrow"
+
+
+def test_create_letter_stores_the_give_on_date(mcp_client):
+    payload = tool_payload(
+        call_tool(
+            mcp_client,
+            "create_plant",
+            {
+                "body": "aku tanam pokok ni untuk hari lahir kau",
+                "title": "Untuk Amirah",
+                "species": "wisteria",
+                "for_whom_name": "Amirah",
+                "give_on": "2027-07-11",
+            },
+        )
+    )
+    assert payload["plant"]["species"] == "wisteria"
+    assert payload["plant"]["forWhom"]["name"] == "Amirah"
+    assert payload["plant"]["forWhom"]["giveOn"] == int(
+        datetime(2027, 7, 11, tzinfo=UTC).timestamp() * 1000
+    )
 
 
 def test_protected_resource_metadata(mcp_client):
