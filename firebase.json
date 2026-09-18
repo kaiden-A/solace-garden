@@ -1,0 +1,31 @@
+{
+  "hosting": {
+    "site": "solace-api",
+    "public": "firebase",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "run": {
+          "serviceId": "elysiaa-solace-server",
+          "region": "asia-southeast1"
+        }
+      },
+      {
+        "source": "/mcp",
+        "run": {
+          "serviceId": "elysiaa-solace-server",
+          "region": "asia-southeast1"
+        }
+      },
+      {
+        "source": "/.well-known/**",
+        "run": {
+          "serviceId": "elysiaa-solace-server",
+          "region": "asia-southeast1"
+        }
+      },
+      { "source": "**", "destination": "/index.html" }
+    ]
+  }
+}
