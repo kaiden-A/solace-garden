@@ -51,7 +51,7 @@ export function GrowingView() {
           return (
             <article
               key={plant.id}
-              className="card growing-card"
+              className="card harvest-card growing-card"
               onClick={() => router.push(`/plants/${plant.id}`)}
             >
               <div className="arch">
