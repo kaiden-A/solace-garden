@@ -7,19 +7,28 @@ stale row instead of failing the listener.
 """
 
 import re
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession
 
-from ..models import MusicPlay, MusicSearch, MusicTrack, User
+from ..models import MusicPlay, MusicPlaylist, MusicPlaylistItem, MusicSearch, MusicTrack, User
 from ..models.users import utcnow
-from ..schemas.music import SearchOut, TrackOut
+from ..schemas.music import PlaylistOut, PlaylistSummaryOut, PlaylistTrackIn, SearchOut, TrackOut
+from ..utils import to_ms
 from .youtube import YouTubeClient, YouTubeQuotaError
 
 SPACE = re.compile(r"\s+")
 RECENTS_LIMIT = 5
 POPULAR_LIMIT = 5
+MAX_PLAYLISTS = 20
+MAX_PLAYLIST_TRACKS = 100
+MAX_PLAYLIST_NAME = 100
+
+
+class PlaylistLimitError(Exception):
+    """A playlist cap was reached; the message is safe to show the listener."""
 
 
 def normalize_query(query: str) -> str:
@@ -209,3 +218,159 @@ def popular_tracks(db: DbSession, *, limit: int = POPULAR_LIMIT) -> list[MusicTr
         .limit(limit)
     ).all()
     return [row[0] for row in rows]
+
+
+def _clean_name(name: str) -> str:
+    return SPACE.sub(" ", name.strip())[:MAX_PLAYLIST_NAME]
+
+
+def _playlist_items(db: DbSession, playlist_id: uuid.UUID) -> list[MusicPlaylistItem]:
+    return list(
+        db.scalars(
+            select(MusicPlaylistItem)
+            .where(MusicPlaylistItem.playlist_id == playlist_id)
+            .order_by(MusicPlaylistItem.position, MusicPlaylistItem.created_at)
+        )
+    )
+
+
+def owned_playlist(db: DbSession, user_id, playlist_id: str) -> MusicPlaylist | None:
+    try:
+        parsed = uuid.UUID(playlist_id)
+    except (ValueError, AttributeError, TypeError):
+        return None
+    return db.scalar(
+        select(MusicPlaylist).where(
+            MusicPlaylist.id == parsed, MusicPlaylist.user_id == user_id
+        )
+    )
+
+
+def playlist_summary(db: DbSession, playlist: MusicPlaylist) -> PlaylistSummaryOut:
+    items = _playlist_items(db, playlist.id)
+    tracks = tracks_by_ids(db, [item.video_id for item in items])
+    return PlaylistSummaryOut(
+        id=str(playlist.id),
+        name=playlist.name,
+        count=len(items),
+        thumb=tracks[0].thumb if tracks else "",
+        createdAt=to_ms(playlist.created_at) or 0,
+    )
+
+
+def list_playlists(db: DbSession, user_id) -> list[PlaylistSummaryOut]:
+    playlists = db.scalars(
+        select(MusicPlaylist)
+        .where(MusicPlaylist.user_id == user_id)
+        .order_by(MusicPlaylist.created_at.desc())
+    ).all()
+    return [playlist_summary(db, playlist) for playlist in playlists]
+
+
+def playlist_out(db: DbSession, playlist: MusicPlaylist) -> PlaylistOut:
+    """The playlist with its tracks in play order."""
+    items = _playlist_items(db, playlist.id)
+    tracks = tracks_by_ids(db, [item.video_id for item in items])
+    return PlaylistOut(
+        id=str(playlist.id),
+        name=playlist.name,
+        createdAt=to_ms(playlist.created_at) or 0,
+        tracks=[track_out(track) for track in tracks],
+    )
+
+
+def _add_tracks(db: DbSession, playlist: MusicPlaylist, tracks: list[PlaylistTrackIn]) -> int:
+    """Appends only the tracks that are new, up to the cap; returns how many landed."""
+    existing = _playlist_items(db, playlist.id)
+    seen = {item.video_id for item in existing}
+    position = max((item.position for item in existing), default=-1) + 1
+    added = 0
+    for track in tracks:
+        if not track.videoId or track.videoId in seen:
+            continue
+        if len(seen) >= MAX_PLAYLIST_TRACKS:
+            # Saving a long queue keeps what fits instead of failing outright.
+            break
+        seen.add(track.videoId)
+        upsert_track(
+            db,
+            video_id=track.videoId,
+            title=track.title.strip(),
+            author=track.author.strip(),
+            thumb=track.thumb.strip(),
+        )
+        db.add(MusicPlaylistItem(playlist_id=playlist.id, video_id=track.videoId, position=position))
+        position += 1
+        added += 1
+    return added
+
+
+def create_playlist(
+    db: DbSession,
+    *,
+    user_id,
+    name: str,
+    tracks: list[PlaylistTrackIn] | None = None,
+) -> PlaylistOut:
+    count = db.scalar(
+        select(func.count()).select_from(MusicPlaylist).where(MusicPlaylist.user_id == user_id)
+    )
+    if count is not None and count >= MAX_PLAYLISTS:
+        raise PlaylistLimitError(f"You can keep up to {MAX_PLAYLISTS} playlists.")
+    playlist = MusicPlaylist(user_id=user_id, name=_clean_name(name))
+    db.add(playlist)
+    db.flush()
+    _add_tracks(db, playlist, tracks or [])
+    db.commit()
+    return playlist_out(db, playlist)
+
+
+def rename_playlist(db: DbSession, playlist: MusicPlaylist, name: str) -> PlaylistSummaryOut:
+    playlist.name = _clean_name(name)
+    db.commit()
+    return playlist_summary(db, playlist)
+
+
+def delete_playlist(db: DbSession, playlist: MusicPlaylist) -> None:
+    db.delete(playlist)
+    db.commit()
+
+
+def add_playlist_track(
+    db: DbSession, playlist: MusicPlaylist, track: PlaylistTrackIn
+) -> PlaylistOut:
+    items = _playlist_items(db, playlist.id)
+    if any(item.video_id == track.videoId for item in items):
+        return playlist_out(db, playlist)
+    if len(items) >= MAX_PLAYLIST_TRACKS:
+        raise PlaylistLimitError(f"This playlist is full ({MAX_PLAYLIST_TRACKS} songs).")
+    _add_tracks(db, playlist, [track])
+    db.commit()
+    return playlist_out(db, playlist)
+
+
+def remove_playlist_track(db: DbSession, playlist: MusicPlaylist, video_id: str) -> PlaylistOut:
+    item = db.scalar(
+        select(MusicPlaylistItem).where(
+            MusicPlaylistItem.playlist_id == playlist.id,
+            MusicPlaylistItem.video_id == video_id,
+        )
+    )
+    if item is not None:
+        db.delete(item)
+        db.commit()
+    return playlist_out(db, playlist)
+
+
+def reorder_playlist(db: DbSession, playlist: MusicPlaylist, video_ids: list[str]) -> PlaylistOut:
+    """Rewrites positions from the caller's order; unknown ids are ignored and
+    any the caller forgot keep their old order at the end."""
+    items = _playlist_items(db, playlist.id)
+    by_id = {item.video_id: item for item in items}
+    ordered = [by_id[video_id] for video_id in dict.fromkeys(video_ids) if video_id in by_id]
+    placed = {item.video_id for item in ordered}
+    ordered += [item for item in items if item.video_id not in placed]
+    for position, item in enumerate(ordered):
+        item.position = position
+    db.commit()
+    return playlist_out(db, playlist)

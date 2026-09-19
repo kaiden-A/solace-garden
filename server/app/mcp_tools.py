@@ -16,6 +16,7 @@ from .config import get_settings
 from .mcp_server import current_user, get_session, mcp
 from .models import Plant, User
 from .models.enums import CATEGORY_VALUES, SPECIES_VALUES, as_category
+from .schemas.music import PlaylistTrackIn
 from .schemas.plants import ForWhomIn
 from .services import music_services, plants_services
 from .services.youtube import YouTubeClient, YouTubeError, YouTubeQuotaError, parse_video_id
@@ -29,7 +30,10 @@ MUTATING = ToolAnnotations(read_only_hint=False, open_world_hint=False)
 DESTRUCTIVE = ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world_hint=False)
 
 PlantId = Annotated[str, Field(description="The plant's id.")]
+PlaylistId = Annotated[str, Field(description="The playlist's id.")]
+VideoId = Annotated[str, Field(description="A YouTube video id or link.")]
 Body = Annotated[str, Field(min_length=1, description="What to write.")]
+PlaylistName = Annotated[str, Field(min_length=1, max_length=100, description="Playlist name.")]
 
 
 def _owned(db, plant_id: str, user: User, *, allow_released: bool = False) -> Plant:
@@ -39,6 +43,20 @@ def _owned(db, plant_id: str, user: User, *, allow_released: bool = False) -> Pl
     if not allow_released and plant.status.value == "released":
         raise ToolError("Plant not found.")
     return plant
+
+
+def _owned_playlist(db, user: User, playlist_id: str):
+    playlist = music_services.owned_playlist(db, user.id, playlist_id)
+    if playlist is None:
+        raise ToolError("Playlist not found.")
+    return playlist
+
+
+def _playlist_track(video_id: str, title: str = "", author: str = "", thumb: str = "") -> PlaylistTrackIn:
+    parsed = parse_video_id(video_id)
+    if parsed is None:
+        raise ToolError("That doesn't look like a YouTube video.")
+    return PlaylistTrackIn(videoId=parsed, title=title.strip(), author=author.strip(), thumb=thumb.strip())
 
 
 def _plant_result(plant: Plant, spawned: Plant | None = None) -> dict:
@@ -265,7 +283,7 @@ def list_popular() -> list[dict]:
 
 @mcp.tool(annotations=MUTATING)
 def add_play(
-    video_id: Annotated[str, Field(description="A YouTube video id or link.")],
+    video_id: VideoId,
     title: Annotated[str, Field(description="Track title.")] = "",
     author: Annotated[str, Field(description="Channel or artist.")] = "",
     thumb: Annotated[str, Field(description="Thumbnail URL.")] = "",
@@ -285,3 +303,107 @@ def add_play(
             thumb=thumb.strip(),
         )
         return [music_services.track_out(track).model_dump(mode="json") for track in tracks]
+
+
+@mcp.tool(annotations=READ_ONLY)
+def list_playlists() -> list[dict]:
+    """List this garden's music playlists with their song counts."""
+    with get_session() as db:
+        user = current_user(db)
+        return [
+            summary.model_dump(mode="json")
+            for summary in music_services.list_playlists(db, user.id)
+        ]
+
+
+@mcp.tool(annotations=READ_ONLY)
+def get_playlist(playlist_id: PlaylistId) -> dict:
+    """Read one playlist with its songs in play order."""
+    with get_session() as db:
+        user = current_user(db)
+        playlist = _owned_playlist(db, user, playlist_id)
+        return music_services.playlist_out(db, playlist).model_dump(mode="json")
+
+
+@mcp.tool(annotations=MUTATING)
+def create_playlist(
+    name: PlaylistName,
+    video_ids: Annotated[
+        list[str] | None,
+        Field(description="Optional YouTube video ids or links to add, in order."),
+    ] = None,
+) -> dict:
+    """Create a playlist, optionally with songs already in it."""
+    clean = name.strip()
+    if not clean:
+        raise ToolError("Give this playlist a name.")
+    seen: set[str] = set()
+    tracks: list[PlaylistTrackIn] = []
+    for raw in video_ids or []:
+        track = _playlist_track(raw)
+        if track.videoId in seen:
+            continue
+        seen.add(track.videoId)
+        tracks.append(track)
+    with get_session() as db:
+        user = current_user(db)
+        try:
+            playlist = music_services.create_playlist(
+                db, user_id=user.id, name=clean, tracks=tracks
+            )
+        except music_services.PlaylistLimitError as exc:
+            raise ToolError(str(exc)) from exc
+        return playlist.model_dump(mode="json")
+
+
+@mcp.tool(annotations=MUTATING)
+def add_to_playlist(
+    playlist_id: PlaylistId,
+    video_id: VideoId,
+    title: Annotated[str, Field(description="Track title.")] = "",
+    author: Annotated[str, Field(description="Channel or artist.")] = "",
+    thumb: Annotated[str, Field(description="Thumbnail URL.")] = "",
+) -> dict:
+    """Add a song to a playlist and return the playlist."""
+    track = _playlist_track(video_id, title, author, thumb)
+    with get_session() as db:
+        user = current_user(db)
+        playlist = _owned_playlist(db, user, playlist_id)
+        try:
+            result = music_services.add_playlist_track(db, playlist, track)
+        except music_services.PlaylistLimitError as exc:
+            raise ToolError(str(exc)) from exc
+        return result.model_dump(mode="json")
+
+
+@mcp.tool(annotations=DESTRUCTIVE)
+def remove_from_playlist(
+    playlist_id: PlaylistId,
+    video_id: Annotated[str, Field(description="The video id to remove.")],
+) -> dict:
+    """Remove a song from a playlist and return the playlist."""
+    with get_session() as db:
+        user = current_user(db)
+        playlist = _owned_playlist(db, user, playlist_id)
+        return music_services.remove_playlist_track(db, playlist, video_id).model_dump(mode="json")
+
+
+@mcp.tool(annotations=MUTATING)
+def reorder_playlist(
+    playlist_id: PlaylistId,
+    video_ids: Annotated[list[str], Field(description="Every song's video id, in play order.")],
+) -> dict:
+    """Rewrite a playlist's play order."""
+    with get_session() as db:
+        user = current_user(db)
+        playlist = _owned_playlist(db, user, playlist_id)
+        return music_services.reorder_playlist(db, playlist, video_ids).model_dump(mode="json")
+
+
+@mcp.tool(annotations=DESTRUCTIVE)
+def delete_playlist(playlist_id: PlaylistId) -> dict:
+    """Delete a playlist. This cannot be undone."""
+    with get_session() as db:
+        user = current_user(db)
+        music_services.delete_playlist(db, _owned_playlist(db, user, playlist_id))
+        return {"ok": True}

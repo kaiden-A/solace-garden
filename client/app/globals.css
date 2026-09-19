@@ -286,6 +286,55 @@ textarea:focus, input:focus { border-color: rgba(255, 184, 107, 0.55); box-shado
 .volume input[type="range"] { flex: 1; accent-color: var(--amber); }
 .music-controls .btn { padding: 7px 16px; font-size: 12.5px; flex-shrink: 0; }
 
+/* the music library page: playlists rail on the left, panels on the right */
+.music-page { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 18px; padding: 0 34px 40px; align-items: start; }
+.music-rail { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 18px; }
+.music-rail h3, .music-panel .recents h4 { font-family: var(--font-ui); font-size: 12.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.playlist-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 46vh; overflow-y: auto; }
+.playlist-list button { width: 100%; display: flex; gap: 10px; align-items: center; text-align: left; color: inherit; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+.playlist-list button:hover { background: rgba(255, 255, 255, 0.06); }
+.playlist-list button.on { border-color: rgba(255, 184, 107, 0.55); background: rgba(255, 184, 107, 0.12); }
+.playlist-list img, .playlist-art { width: 42px; height: 30px; border-radius: 7px; object-fit: cover; flex-shrink: 0; }
+.playlist-art { display: grid; place-items: center; background: rgba(255, 184, 107, 0.12); color: var(--amber-soft); border: 1px solid var(--line); }
+.playlist-art .icon { width: 15px; height: 15px; }
+.playlist-list span { display: flex; flex-direction: column; min-width: 0; }
+.playlist-list b { font-size: 13.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.playlist-list em { font-style: normal; font-size: 11px; color: var(--muted); }
+.playlist-new { display: flex; gap: 8px; }
+.playlist-new input { flex: 1; padding: 10px 13px; font-size: 15px; border-radius: 12px; }
+.playlist-new .btn { flex-shrink: 0; padding: 10px 14px; }
+.music-stack { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.music-panel { display: flex; flex-direction: column; gap: 12px; }
+.music-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.music-panel-head h2 { font-size: 26px; }
+.music-panel .recents { max-height: none; }
+.playlist-rename { display: flex; gap: 8px; }
+.playlist-rename input { min-width: 200px; padding: 9px 13px; font-size: 15px; border-radius: 12px; }
+
+/* one song row: play area plus its actions, shared by modal and page */
+.track-row { display: flex; align-items: center; gap: 4px; }
+.track-row .recent { flex: 1; min-width: 0; }
+.track-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.track-action { width: 30px; height: 30px; border-radius: 50%; border: 0; background: none; color: var(--muted); cursor: pointer; display: grid; place-items: center; }
+.track-action:hover { color: var(--text); background: rgba(255, 255, 255, 0.08); }
+.track-action:disabled { opacity: 0.3; cursor: default; background: none; }
+.track-action .icon { width: 14px; height: 14px; }
+
+.queue-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.queue-save { display: inline-flex; align-items: center; gap: 5px; padding: 2px 6px; border: 0; border-radius: 8px; background: none; color: var(--amber-soft); font-size: 11.5px; cursor: pointer; }
+.queue-save:hover { background: rgba(255, 184, 107, 0.12); }
+.queue-save .icon { width: 12px; height: 12px; }
+.queue-save-form { display: flex; gap: 6px; }
+.queue-save-form input { flex: 1; padding: 8px 12px; font-size: 14px; border-radius: 10px; }
+.queue-save-form .btn { padding: 7px 12px; font-size: 12.5px; flex-shrink: 0; }
+
+.add-playlist-modal { width: min(400px, 94vw); display: flex; flex-direction: column; gap: 12px; }
+.add-playlist-modal h2 { font-size: 24px; }
+.playlist-choices { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; }
+.playlist-choice { display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03); cursor: pointer; }
+.playlist-choice:hover { border-color: rgba(255, 184, 107, 0.5); background: rgba(255, 184, 107, 0.1); }
+.playlist-choice em { font-style: normal; font-size: 12px; color: var(--muted); }
+
 .main { display: flex; flex-direction: column; min-width: 0; height: 100vh; height: 100dvh; }
 .view { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; animation: viewIn 0.38s ease; }
 @keyframes viewIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
@@ -726,8 +775,11 @@ blockquote { margin: 0; font-family: var(--font-display); font-size: 22px; line-
   .garden-canvas { min-height: 460px; margin: 0 12px 16px; }
   .topbar { padding: 20px 16px 14px; flex-wrap: wrap; }
   .search { width: 130px; }
-  .detail, .form-screen, .grid { padding-left: 16px; padding-right: 16px; }
+  .detail, .form-screen, .grid, .music-page { padding-left: 16px; padding-right: 16px; }
   .detail, .form-screen { grid-template-columns: 1fr; }
+  .music-page { grid-template-columns: 1fr; }
+  .music-rail { position: static; }
+  .playlist-list { max-height: none; }
   .art.form-art { display: none; }
   /* the flower stays on the page; it just sits under the words on one column */
   .detail-screen .detail-art, .detail-screen .detail-art.letter-art { position: static; padding-top: 8px; gap: 14px; }
@@ -763,6 +815,7 @@ blockquote { margin: 0; font-family: var(--font-display); font-size: 22px; line-
   .user-row { border: 0; background: none; padding: 0; gap: 4px; }
   .user-name { display: none; }
   .icon-btn { min-width: 44px; min-height: 44px; padding: 0; margin-left: 0; }
+  .track-action { width: 40px; height: 40px; }
   .main { height: auto; min-height: 0; padding-top: calc(60px + var(--safe-top)); }
   .view { overflow: visible; }
   .tabbar {

@@ -1,18 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
+import { createPlaylist } from "@/lib/music";
+import type { VideoInfo } from "@/lib/music";
 import { toast } from "@/lib/toast";
 import { parseYouTubeId, watchUrl } from "@/lib/youtube";
+import { AddToPlaylistButton } from "./AddToPlaylist";
 import { Icon } from "./Icon";
-
-export interface VideoInfo {
-  id: string;
-  title: string;
-  author: string;
-  thumb: string;
-}
+import { TrackRow } from "./TrackRow";
 
 interface YTPlayer {
   playVideo(): void;
@@ -58,7 +56,7 @@ const YT_ENDED = 0;
 const YT_PLAYING = 1;
 const YT_PAUSED = 2;
 
-const MAX_QUEUE = 25;
+const MAX_QUEUE = 200;
 
 async function fetchJson<T>(path: string): Promise<T | null> {
   try {
@@ -609,6 +607,9 @@ function MusicModal({ onClose }: { onClose: () => void }) {
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [savingQueue, setSavingQueue] = useState(false);
+  const [queueName, setQueueName] = useState("");
+  const [savingBusy, setSavingBusy] = useState(false);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -677,18 +678,38 @@ function MusicModal({ onClose }: { onClose: () => void }) {
   const isYT = music.mode === "yt" && Boolean(music.video);
   const looksLikeLink = Boolean(parseYouTubeId(query));
 
-  const trackList = (label: string, videos: VideoInfo[], box = "recents") =>
+  const saveQueue = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const clean = queueName.trim();
+    if (!clean || savingBusy) return;
+    setSavingBusy(true);
+    try {
+      const created = await createPlaylist(clean, music.queue);
+      setSavingQueue(false);
+      setQueueName("");
+      toast(
+        `Saved ${created.tracks.length} ${created.tracks.length === 1 ? "song" : "songs"} to ${created.name}.`,
+      );
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Couldn't save the queue.");
+    } finally {
+      setSavingBusy(false);
+    }
+  };
+
+  const trackList = (label: string, videos: VideoInfo[], box = "recents", addable = false) =>
     videos.length > 0 && (
       <div className={box}>
         <h4>{label}</h4>
         {videos.map((video) => (
-          <button key={video.id} className="recent" onClick={() => music.playVideo(video, videos)}>
-            <img src={video.thumb} alt="" />
-            <span>
-              <b>{video.title}</b>
-              {video.author ? <em>{video.author}</em> : null}
-            </span>
-          </button>
+          <TrackRow
+            key={video.id}
+            video={video}
+            onPlay={() => music.playVideo(video, videos)}
+            playing={music.video?.id === video.id}
+          >
+            {addable ? <AddToPlaylistButton video={video} /> : null}
+          </TrackRow>
         ))}
       </div>
     );
@@ -784,30 +805,62 @@ function MusicModal({ onClose }: { onClose: () => void }) {
               </button>
             </form>
             {error && <p className="music-error">{error}</p>}
-            {trackList("Results", results, "recents music-results")}
+            {trackList("Results", results, "recents music-results", true)}
             {!loading && searched && results.length === 0 && !error && (
               <p className="hint">Nothing found for that. Try different words, or paste a link.</p>
             )}
             {music.queue.length > 1 && (
               <div className="recents music-queue">
-                <h4>Up next</h4>
+                <div className="queue-head">
+                  <h4>Up next</h4>
+                  {!savingQueue && (
+                    <button
+                      className="queue-save"
+                      onClick={() => {
+                        setQueueName("");
+                        setSavingQueue(true);
+                      }}
+                    >
+                      <Icon name="plus" /> Save as playlist
+                    </button>
+                  )}
+                </div>
+                {savingQueue && (
+                  <form className="queue-save-form" onSubmit={saveQueue}>
+                    <input
+                      value={queueName}
+                      onChange={(event) => setQueueName(event.target.value)}
+                      placeholder="Playlist name"
+                      autoFocus
+                      autoComplete="off"
+                      enterKeyHint="done"
+                    />
+                    <button className="btn btn-primary" disabled={savingBusy || !queueName.trim()}>
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => setSavingQueue(false)}
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                )}
                 {music.queue.map((video, index) => (
-                  <button
+                  <TrackRow
                     key={`${video.id}-${index}`}
-                    className={`recent${index === music.index ? " on" : ""}`}
-                    onClick={() => music.jumpTo(index)}
+                    video={video}
+                    onPlay={() => music.jumpTo(index)}
+                    playing={index === music.index}
                   >
-                    <img src={video.thumb} alt="" />
-                    <span>
-                      <b>{video.title}</b>
-                      {video.author ? <em>{video.author}</em> : null}
-                    </span>
-                  </button>
+                    <AddToPlaylistButton video={video} />
+                  </TrackRow>
                 ))}
               </div>
             )}
-            {trackList("Recent", music.recents)}
-            {trackList("Popular in the garden", music.popular)}
+            {trackList("Recent", music.recents, "recents", true)}
+            {trackList("Popular in the garden", music.popular, "recents", true)}
           </div>
         )}
 
@@ -823,6 +876,9 @@ function MusicModal({ onClose }: { onClose: () => void }) {
               onChange={(event) => music.setVolume(Number(event.target.value))}
             />
           </label>
+          <Link className="btn btn-ghost" href="/music" onClick={onClose}>
+            <Icon name="music" /> Library
+          </Link>
           {music.mode !== "off" && (
             <button className="btn btn-ghost" onClick={music.stop}>
               Stop

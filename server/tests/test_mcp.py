@@ -126,6 +126,13 @@ def test_initialize_lists_all_tools(mcp_client):
         "list_recents",
         "list_popular",
         "add_play",
+        "list_playlists",
+        "get_playlist",
+        "create_playlist",
+        "add_to_playlist",
+        "remove_from_playlist",
+        "reorder_playlist",
+        "delete_playlist",
     }
 
 
@@ -224,3 +231,65 @@ async def test_verifier_maps_a_zitadel_subject(mcp_env: User, db, monkeypatch):
     access = await SolaceTokenVerifier().verify_token("a.zitadel.jwt")
     assert access is not None
     assert access.subject == str(mcp_env.id)
+
+
+def test_playlist_tools(mcp_client):
+    created = tool_payload(
+        call_tool(
+            mcp_client,
+            "create_playlist",
+            {"name": "Evening", "video_ids": ["dQw4w9WgXcQ", "https://youtu.be/9bZkp7q19f0"]},
+        )
+    )
+    assert created["name"] == "Evening"
+    assert [track["id"] for track in created["tracks"]] == ["dQw4w9WgXcQ", "9bZkp7q19f0"]
+    playlist_id = created["id"]
+
+    listed = tool_payload(call_tool(mcp_client, "list_playlists", {}))
+    assert [(item["name"], item["count"]) for item in listed] == [("Evening", 2)]
+
+    added = tool_payload(
+        call_tool(
+            mcp_client,
+            "add_to_playlist",
+            {"playlist_id": playlist_id, "video_id": "kJQP7kiw5Fk", "title": "Third"},
+        )
+    )
+    assert [track["id"] for track in added["tracks"]] == [
+        "dQw4w9WgXcQ",
+        "9bZkp7q19f0",
+        "kJQP7kiw5Fk",
+    ]
+
+    reordered = tool_payload(
+        call_tool(
+            mcp_client,
+            "reorder_playlist",
+            {"playlist_id": playlist_id, "video_ids": ["kJQP7kiw5Fk", "dQw4w9WgXcQ", "9bZkp7q19f0"]},
+        )
+    )
+    assert [track["id"] for track in reordered["tracks"]] == [
+        "kJQP7kiw5Fk",
+        "dQw4w9WgXcQ",
+        "9bZkp7q19f0",
+    ]
+
+    fetched = tool_payload(call_tool(mcp_client, "get_playlist", {"playlist_id": playlist_id}))
+    assert [track["id"] for track in fetched["tracks"]] == [
+        "kJQP7kiw5Fk",
+        "dQw4w9WgXcQ",
+        "9bZkp7q19f0",
+    ]
+
+    removed = tool_payload(
+        call_tool(
+            mcp_client,
+            "remove_from_playlist",
+            {"playlist_id": playlist_id, "video_id": "dQw4w9WgXcQ"},
+        )
+    )
+    assert [track["id"] for track in removed["tracks"]] == ["kJQP7kiw5Fk", "9bZkp7q19f0"]
+
+    deleted = tool_payload(call_tool(mcp_client, "delete_playlist", {"playlist_id": playlist_id}))
+    assert deleted["ok"] is True
+    assert tool_payload(call_tool(mcp_client, "list_playlists", {})) == []

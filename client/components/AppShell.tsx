@@ -17,6 +17,7 @@ const NAV = [
   { route: "release", label: "Let go", icon: "leaf" },
   { route: "harvest", label: "Harvest", icon: "basket" },
   { route: "gifts", label: "Gifts", icon: "gift" },
+  { route: "music", label: "Music", icon: "music" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

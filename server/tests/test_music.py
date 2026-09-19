@@ -4,7 +4,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session as DbSession
 
-from app.models import MusicSearch, MusicTrack
+from app.models import MusicPlaylist, MusicPlaylistItem, MusicSearch, MusicTrack
+from app.services import music_services
 from app.services.youtube import parse_video_id
 from tests.conftest import FakeYouTube
 
@@ -194,3 +195,174 @@ def test_unknown_metadata_never_overwrites_a_known_track(
     track = db.scalar(select(MusicTrack).where(MusicTrack.video_id == SONG_A))
     assert track is not None
     assert (track.title, track.author) == ("Real title", "Real")
+
+
+def test_history_limit_is_bounded(music_client: TestClient, db, make_user, sign_in) -> None:
+    sign_in(make_user(db))
+    for index, video_id in enumerate([SONG_A, SONG_B, SONG_C]):
+        music_client.post("/api/music/plays", json={"videoId": video_id, "title": f"t{index}"})
+
+    assert len(music_client.get("/api/music/recents").json()["results"]) == 3
+    assert (
+        len(music_client.get("/api/music/recents", params={"limit": 2}).json()["results"]) == 2
+    )
+    assert music_client.get("/api/music/recents", params={"limit": 0}).status_code == 422
+    assert music_client.get("/api/music/recents", params={"limit": 101}).status_code == 422
+
+
+def test_playlists_require_a_listener(music_client: TestClient) -> None:
+    assert music_client.get("/api/music/playlists").status_code == 401
+    assert (
+        music_client.post("/api/music/playlists", json={"name": "Late night"}).status_code == 401
+    )
+
+
+def test_playlist_crud(music_client: TestClient, db, make_user, sign_in) -> None:
+    sign_in(make_user(db))
+
+    created = music_client.post("/api/music/playlists", json={"name": "  Quiet   Hours "})
+    assert created.status_code == 201
+    body = created.json()
+    assert body["name"] == "Quiet Hours"
+    assert body["tracks"] == []
+    playlist_id = body["id"]
+
+    listed = music_client.get("/api/music/playlists").json()
+    assert [(item["name"], item["count"], item["thumb"]) for item in listed] == [
+        ("Quiet Hours", 0, "")
+    ]
+
+    renamed = music_client.patch(f"/api/music/playlists/{playlist_id}", json={"name": "Dawn"})
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Dawn"
+
+    assert music_client.patch(f"/api/music/playlists/{playlist_id}", json={"name": "  "}).status_code == 400
+    assert music_client.get("/api/music/playlists/not-a-uuid").status_code == 404
+    assert music_client.delete(f"/api/music/playlists/{playlist_id}").json() == {"ok": True}
+    assert music_client.get("/api/music/playlists").json() == []
+
+
+def test_playlist_tracks_dedupe_order_and_remove(
+    db: DbSession, music_client: TestClient, make_user, sign_in
+) -> None:
+    sign_in(make_user(db))
+    playlist_id = music_client.post("/api/music/playlists", json={"name": "Walk"}).json()["id"]
+
+    added = music_client.post(
+        f"/api/music/playlists/{playlist_id}/tracks",
+        json={"videoId": SONG_A, "title": "First", "author": "Chan", "thumb": "thumb-a"},
+    )
+    assert added.status_code == 200
+    assert [track["id"] for track in added.json()["tracks"]] == [SONG_A]
+    assert added.json()["tracks"][0]["title"] == "First"
+
+    again = music_client.post(
+        f"/api/music/playlists/{playlist_id}/tracks", json={"videoId": SONG_A}
+    )
+    assert [track["id"] for track in again.json()["tracks"]] == [SONG_A]
+
+    music_client.post(
+        f"/api/music/playlists/{playlist_id}/tracks", json={"videoId": SONG_B, "title": "Second"}
+    )
+    music_client.post(
+        f"/api/music/playlists/{playlist_id}/tracks", json={"videoId": SONG_C, "title": "Third"}
+    )
+    ordered = music_client.get(f"/api/music/playlists/{playlist_id}").json()
+    assert [track["id"] for track in ordered["tracks"]] == [SONG_A, SONG_B, SONG_C]
+
+    reordered = music_client.put(
+        f"/api/music/playlists/{playlist_id}/order",
+        json={"videoIds": [SONG_C, SONG_A, SONG_B]},
+    )
+    assert [track["id"] for track in reordered.json()["tracks"]] == [SONG_C, SONG_A, SONG_B]
+
+    # an id the caller forgot keeps its old place at the end
+    partial = music_client.put(
+        f"/api/music/playlists/{playlist_id}/order", json={"videoIds": [SONG_B, SONG_A]}
+    )
+    assert [track["id"] for track in partial.json()["tracks"]] == [SONG_B, SONG_A, SONG_C]
+
+    removed = music_client.delete(f"/api/music/playlists/{playlist_id}/tracks/{SONG_A}")
+    assert [track["id"] for track in removed.json()["tracks"]] == [SONG_B, SONG_C]
+
+    assert (
+        music_client.post(
+            f"/api/music/playlists/{playlist_id}/tracks", json={"videoId": "nope"}
+        ).status_code
+        == 400
+    )
+    # the playlist's own metadata cache row was written when the track landed
+    assert db.scalar(select(MusicTrack).where(MusicTrack.video_id == SONG_C)) is not None
+
+
+def test_playlists_belong_to_one_listener(music_client: TestClient, db, make_user, sign_in) -> None:
+    sign_in(make_user(db, name="Ada"))
+    playlist_id = music_client.post("/api/music/playlists", json={"name": "Mine"}).json()["id"]
+
+    sign_in(make_user(db, name="Grace", email="grace@example.com"))
+    assert music_client.get("/api/music/playlists").json() == []
+    assert music_client.get(f"/api/music/playlists/{playlist_id}").status_code == 404
+    assert (
+        music_client.patch(
+            f"/api/music/playlists/{playlist_id}", json={"name": "Not mine"}
+        ).status_code
+        == 404
+    )
+    assert (
+        music_client.post(
+            f"/api/music/playlists/{playlist_id}/tracks", json={"videoId": SONG_A}
+        ).status_code
+        == 404
+    )
+    assert music_client.delete(f"/api/music/playlists/{playlist_id}").status_code == 404
+
+
+def test_create_playlist_saves_a_queue_and_caps_apply(
+    music_client: TestClient, db, make_user, sign_in, monkeypatch
+) -> None:
+    sign_in(make_user(db))
+    monkeypatch.setattr(music_services, "MAX_PLAYLIST_TRACKS", 2)
+
+    created = music_client.post(
+        "/api/music/playlists",
+        json={
+            "name": "Tonight",
+            "tracks": [
+                {"videoId": SONG_A, "title": "A"},
+                {"videoId": SONG_B, "title": "B"},
+                {"videoId": SONG_C, "title": "C"},
+                {"videoId": SONG_A, "title": "A again"},
+            ],
+        },
+    )
+    assert created.status_code == 201
+    assert [track["id"] for track in created.json()["tracks"]] == [SONG_A, SONG_B]
+
+    playlist_id = created.json()["id"]
+    full = music_client.post(
+        f"/api/music/playlists/{playlist_id}/tracks", json={"videoId": SONG_C}
+    )
+    assert full.status_code == 400
+    assert "full" in full.json()["error"]
+
+    monkeypatch.setattr(music_services, "MAX_PLAYLISTS", 1)
+    capped = music_client.post("/api/music/playlists", json={"name": "One too many"})
+    assert capped.status_code == 400
+    assert "playlists" in capped.json()["error"]
+
+
+def test_deleting_the_listener_removes_their_playlists(
+    db: DbSession, music_client: TestClient, make_user, sign_in
+) -> None:
+    user = make_user(db)
+    sign_in(user)
+    playlist_id = music_client.post("/api/music/playlists", json={"name": "Going away"}).json()["id"]
+    music_client.post(
+        f"/api/music/playlists/{playlist_id}/tracks", json={"videoId": SONG_A, "title": "A"}
+    )
+
+    db.delete(user)
+    db.commit()
+
+    assert db.scalar(select(MusicPlaylist)) is None
+    assert db.scalar(select(MusicPlaylistItem)) is None
