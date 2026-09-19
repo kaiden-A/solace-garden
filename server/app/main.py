@@ -6,6 +6,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import Response
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from . import mcp_server, mcp_tools  # noqa: F401  (mcp_tools registers the tools)
 from .config import get_settings
@@ -42,6 +44,32 @@ app = FastAPI(
     description="Plants,gifts and auth for the Solace Garden client.",
     lifespan=lifespan,
 )
+
+
+class RejectMCPGet:
+    """Answer ``GET /mcp`` with 405 instead of holding an idle SSE stream open.
+
+    MCP clients open a standalone GET stream after initialize when the server
+    allows one. The transport mounted here is stateless with JSON responses, so
+    it never sends anything on that stream: keeping it open holds an HTTP
+    request - and a Cloud Run instance - alive while there is no work to do.
+    The spec allows 405, and the client SDKs treat it as "no stream offered"
+    and keep using POST.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope["method"] == "GET" and scope["path"] == "/mcp":
+            await Response("SSE stream is not supported.", status_code=405)(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+
+# Added before CORS so CORS stays the outermost layer and still decorates the
+# 405 response.
+app.add_middleware(RejectMCPGet)
 
 if settings.cors_origin_list:
     app.add_middleware(

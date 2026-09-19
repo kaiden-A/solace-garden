@@ -105,6 +105,18 @@ def test_rejects_unknown_token(mcp_client, monkeypatch):
     assert rpc(mcp_client, "initialize", token="not-the-key").status_code == 401
 
 
+def test_get_mcp_stream_is_refused(mcp_client):
+    """An idle GET must not hold an SSE request (and a Cloud Run instance) open."""
+    response = mcp_client.get(
+        "/mcp",
+        headers={
+            "Accept": "text/event-stream",
+            "Authorization": f"Bearer {settings.mcp_api_key}",
+        },
+    )
+    assert response.status_code == 405
+
+
 def test_initialize_lists_all_tools(mcp_client):
     response = initialize(mcp_client, token=settings.mcp_api_key)
     assert response.status_code == 200
