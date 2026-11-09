@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'server/**'
+      - '.github/workflows/cd.yml'
   workflow_dispatch:
     inputs:
       mode:
@@ -50,7 +51,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      SECRIA_ENV_FILE: ${{ runner.temp }}/secria-env.yaml
       ALLOW_REMOVE: ${{ inputs.allow_remove == 'yes' && '1' || vars.ALLOW_REMOVE || '0' }}
 
     steps:
@@ -133,11 +133,14 @@ jobs:
         if: steps.secria_token.outputs.configured == 'true'
         env:
           SECRIA_TOKEN: ${{ secrets.SECRIA_TOKEN }}
+          SECRIA_ENV_FILE: ${{ runner.temp }}/secria-env.yaml
         run: |
           "$RUNNER_TEMP/secria-venv/bin/python" server/scripts/sync_secria_env.py
 
       - name: Preflight deletion guard
         if: steps.secria_token.outputs.configured == 'true'
+        env:
+          SECRIA_ENV_FILE: ${{ runner.temp }}/secria-env.yaml
         run: |
           CURRENT_KEYS=$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
             --project="$GCP_PROJECT" --region="$GCP_REGION" \
@@ -154,6 +157,8 @@ jobs:
 
       - name: Deploy zero-traffic revision
         if: steps.secria_token.outputs.configured == 'true'
+        env:
+          SECRIA_ENV_FILE: ${{ runner.temp }}/secria-env.yaml
         run: |
           gcloud run deploy "$CLOUD_RUN_SERVICE" \
             --project="$GCP_PROJECT" \
