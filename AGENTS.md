@@ -37,4 +37,7 @@
 
 ## Deploy
 
-- `.github/workflows/cd.yml` builds `server/Dockerfile` (context `./server`) and deploys Cloud Run (`asia-southeast1`), but only on pushes to `master` - the repo's only branch is `main`, so the workflow does not currently fire.
+- `.github/workflows/cd.yml` builds `server/Dockerfile` (context `./server`), authenticates to GCP with Workload Identity Federation, syncs the `elysiaa/solace-garden/prod` snapshot from Secria, and deploys Cloud Run (`asia-southeast1`) by image digest.
+- It fires on pushes to `main` under `server/**`; `workflow_dispatch` supports `mode=secrets-only` for secret-only rotations and `allow_remove=yes` to intentionally delete Cloud Run keys that are no longer in Secria.
+- `SECRIA_TOKEN` is a read-only service token scoped to `solace-garden/prod`. The sync script writes a `0600` temp file and never prints values.
+- The deployment creates a zero-traffic revision tagged `healthcheck`, checks `/api/health`, then promotes it to 100%. A failed health check leaves the previous revision serving traffic.

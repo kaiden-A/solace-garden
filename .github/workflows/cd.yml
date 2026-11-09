@@ -6,36 +6,71 @@ on:
       - main
     paths:
       - 'server/**'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Deploy the current code or only re-sync Secria secrets'
+        type: choice
+        options:
+          - full
+          - secrets-only
+        default: full
+      allow_remove:
+        description: 'Allow Cloud Run keys missing from Secria to be removed'
+        type: choice
+        options:
+          - 'no'
+          - 'yes'
+        default: 'no'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
-  DOCKERHUB_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.APP_NAME }}
+  DOCKERHUB_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/elysiaa-solace-server
+  GCP_PROJECT: elysiaa-api
   GCP_REGION: asia-southeast1
-  CLOUD_RUN_SERVICE: ${{ vars.APP_NAME }}
+  CLOUD_RUN_SERVICE: elysiaa-solace-server
+  RUNTIME_SERVICE_ACCOUNT: 1023333674013-compute@developer.gserviceaccount.com
+  HEALTH_PATH: /api/health
+  SECRIA_API_URL: ${{ vars.SECRIA_API_URL || 'https://elysiaa-secria-server-5te6lrweba-as.a.run.app' }}
+  SECRIA_EXPECT_PROJECT: solace-garden
+  SECRIA_EXPECT_ENV: prod
+  WIF_PROVIDER: ${{ vars.WIF_PROVIDER || 'projects/1023333674013/locations/global/workloadIdentityPools/github-actions/providers/github' }}
+  WIF_SERVICE_ACCOUNT: ${{ vars.WIF_SERVICE_ACCOUNT || 'github-deployer@elysiaa-api.iam.gserviceaccount.com' }}
 
 jobs:
   deploy:
-    name: Build, Push & Deploy
+    name: Build, Sync Secria & Deploy
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SECRIA_ENV_FILE: ${{ runner.temp }}/secria-env.yaml
+      ALLOW_REMOVE: ${{ inputs.allow_remove == 'yes' && '1' || vars.ALLOW_REMOVE || '0' }}
 
     steps:
-      # 1. Checkout code
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Set image tag to short commit SHA
       - name: Set image tag
         id: tag
-        run: echo "IMAGE_TAG=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+        run: echo "IMAGE_TAG=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      # 3. Log in to Docker Hub
       - name: Log in to Docker Hub
+        if: github.event_name != 'workflow_dispatch' || inputs.mode != 'secrets-only'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 4. Build and push Docker image
       - name: Build and push Docker image
+        id: build
+        if: github.event_name != 'workflow_dispatch' || inputs.mode != 'secrets-only'
         uses: docker/build-push-action@v5
         with:
           context: ./server
@@ -44,20 +79,133 @@ jobs:
             ${{ env.DOCKERHUB_IMAGE }}:${{ steps.tag.outputs.IMAGE_TAG }}
             ${{ env.DOCKERHUB_IMAGE }}:latest
 
-      # 5. Authenticate to GCP
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SERVICE_ACCOUNT }}
 
-      # 6. Deploy to Cloud Run
-      - name: Deploy to Cloud Run
-        uses: google-github-actions/deploy-cloudrun@v2
-        with:
-          service: ${{ env.CLOUD_RUN_SERVICE }}
-          region: ${{ env.GCP_REGION }}
-          image: ${{ env.DOCKERHUB_IMAGE }}:${{ steps.tag.outputs.IMAGE_TAG }}
+      - name: Resolve image
+        id: image
+        run: |
+          if [ "${{ inputs.mode }}" = "secrets-only" ]; then
+            REVISION=$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+              --project="$GCP_PROJECT" --region="$GCP_REGION" \
+              --format="value(status.latestReadyRevisionName)" --quiet)
+            IMAGE=$(gcloud run revisions describe "$REVISION" \
+              --project="$GCP_PROJECT" --region="$GCP_REGION" \
+              --format="value(status.imageDigest)" --quiet)
+            if [ -z "$IMAGE" ]; then
+              IMAGE=$(gcloud run revisions describe "$REVISION" \
+                --project="$GCP_PROJECT" --region="$GCP_REGION" \
+                --format="value(spec.containers[0].image)" --quiet)
+            fi
+          else
+            IMAGE="$DOCKERHUB_IMAGE@${{ steps.build.outputs.digest }}"
+          fi
+          if [ -z "$IMAGE" ]; then
+            echo "Could not resolve an image." >&2
+            exit 1
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
-      # 7. Print the deployed URL
+      - name: Check Secria token
+        id: secria_token
+        env:
+          SECRIA_TOKEN: ${{ secrets.SECRIA_TOKEN }}
+        run: |
+          if [ -z "$SECRIA_TOKEN" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::SECRIA_TOKEN is not configured; skipping the deploy."
+            echo "### Secria deploy skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "Add the read-only Secria token as the \`SECRIA_TOKEN\` Actions secret, then run this workflow with \`mode=full\`." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Secria sync dependency
+        if: steps.secria_token.outputs.configured == 'true'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/secria-venv"
+          "$RUNNER_TEMP/secria-venv/bin/python" -m pip install --disable-pip-version-check "httpx>=0.28"
+
+      - name: Sync Secria environment
+        if: steps.secria_token.outputs.configured == 'true'
+        env:
+          SECRIA_TOKEN: ${{ secrets.SECRIA_TOKEN }}
+        run: |
+          "$RUNNER_TEMP/secria-venv/bin/python" server/scripts/sync_secria_env.py
+
+      - name: Preflight deletion guard
+        if: steps.secria_token.outputs.configured == 'true'
+        run: |
+          CURRENT_KEYS=$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+            --project="$GCP_PROJECT" --region="$GCP_REGION" \
+            --format=json --quiet \
+            | jq -r '.spec.template.spec.containers[0].env[]?.name' | sort -u | sed '/^$/d')
+          NEW_KEYS=$(jq -r 'keys[]' "$SECRIA_ENV_FILE" | sort -u | sed '/^$/d')
+          MISSING=$(comm -23 <(printf '%s\n' "$CURRENT_KEYS") <(printf '%s\n' "$NEW_KEYS") | sed '/^$/d')
+          if [ -n "$MISSING" ] && [ "$ALLOW_REMOVE" != "1" ]; then
+            echo "Refusing to remove Cloud Run variables that are not in Secria:" >&2
+            printf '%s\n' "$MISSING" >&2
+            echo "Re-run with allow_remove=true if this is intentional." >&2
+            exit 1
+          fi
+
+      - name: Deploy zero-traffic revision
+        if: steps.secria_token.outputs.configured == 'true'
+        run: |
+          gcloud run deploy "$CLOUD_RUN_SERVICE" \
+            --project="$GCP_PROJECT" \
+            --region="$GCP_REGION" \
+            --platform=managed \
+            --image="${{ steps.image.outputs.image }}" \
+            --service-account="$RUNTIME_SERVICE_ACCOUNT" \
+            --env-vars-file="$SECRIA_ENV_FILE" \
+            --no-traffic \
+            --tag=healthcheck \
+            --quiet
+
+      - name: Health check the tagged revision
+        id: healthcheck
+        if: steps.secria_token.outputs.configured == 'true'
+        run: |
+          TRAFFIC=$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+            --project="$GCP_PROJECT" --region="$GCP_REGION" \
+            --format=json --quiet)
+          TAGGED_URL=$(printf '%s' "$TRAFFIC" \
+            | jq -r '.status.traffic[] | select(.tag=="healthcheck") | .url')
+          TAGGED_REVISION=$(printf '%s' "$TRAFFIC" \
+            | jq -r '.status.traffic[] | select(.tag=="healthcheck") | .revisionName')
+          if [ -z "$TAGGED_URL" ] || [ "$TAGGED_URL" = "null" ]; then
+            echo "Could not find the healthcheck tag URL." >&2
+            exit 1
+          fi
+          if [ -z "$TAGGED_REVISION" ] || [ "$TAGGED_REVISION" = "null" ]; then
+            echo "Could not find the healthcheck revision name." >&2
+            exit 1
+          fi
+          curl --fail --silent --show-error \
+            --retry 10 --retry-delay 3 --retry-all-errors \
+            "$TAGGED_URL$HEALTH_PATH"
+          echo "revision=$TAGGED_REVISION" >> "$GITHUB_OUTPUT"
+
+      - name: Promote the revision
+        if: steps.secria_token.outputs.configured == 'true'
+        run: |
+          gcloud run services update-traffic "$CLOUD_RUN_SERVICE" \
+            --project="$GCP_PROJECT" \
+            --region="$GCP_REGION" \
+            --to-revisions="${{ steps.healthcheck.outputs.revision }}=100" \
+            --remove-tags=healthcheck \
+            --quiet
+
       - name: Show deployed URL
-        run: echo "Deployed to ${{ steps.deploy.outputs.url }}"
+        if: steps.secria_token.outputs.configured == 'true'
+        run: |
+          URL=$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+            --project="$GCP_PROJECT" --region="$GCP_REGION" \
+            --format="value(status.url)" --quiet)
+          echo "Deployed to $URL"
+          echo "### Deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "$URL" >> "$GITHUB_STEP_SUMMARY"
